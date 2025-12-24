@@ -34,4 +34,7 @@
 #include <netlink/netlink_snl_route.h>
 #include <netlink/netlink_snl_route_compat.h>
 #include <netlink/netlink_snl_route_parsers.h>
+
+
+void	ifcreate_nl(if_ctx *, struct nlmsghdr *);
 #endif

@@ -321,7 +321,7 @@ static void freeformat(void)
 
 static void setformat(char *input)
 {
-	char	*formatstr, *category, *modifier; 
+	char	*formatstr, *category, *modifier;
 
 	formatstr = strdup(input);
 	while ((category = strsep(&formatstr, ",")) != NULL) {
@@ -369,7 +369,7 @@ sortifaddrs(struct ifaddrs *list,
     struct ifa_queue *q)
 {
 	struct ifaddrs *right, *temp, *last, *result, *next, *tail;
-	
+
 	right = list;
 	temp = list;
 	last = list;
@@ -783,10 +783,10 @@ list_interfaces_ioctl(if_ctx *ctx)
 		err(EXIT_FAILURE, "getifaddrs");
 
 	char *cp = NULL;
-	
+
 	if (calcorders(ifap, &q) != 0)
 		err(EXIT_FAILURE, "calcorders");
-		
+
 	sifap = sortifaddrs(ifap, cmpifaddrs, &q);
 
 	TAILQ_FOREACH_SAFE(cur, &q, link, tmp)
@@ -1373,7 +1373,7 @@ getifflags(const char *ifname, int us, bool err_ok)
 {
 	struct ifreq my_ifr;
 	int s;
-	
+
 	memset(&my_ifr, 0, sizeof(my_ifr));
 	(void) strlcpy(my_ifr.ifr_name, ifname, sizeof(my_ifr.ifr_name));
 	if (us < 0) {
@@ -1989,7 +1989,7 @@ print_vhid(const struct ifaddrs *ifa)
 	ifd = ifa->ifa_data;
 	if (ifd->ifi_vhid == 0)
 		return;
-	
+
 	printf(" vhid %d", ifd->ifi_vhid);
 }
 

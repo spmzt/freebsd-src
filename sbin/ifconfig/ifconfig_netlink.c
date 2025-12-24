@@ -457,7 +457,7 @@ list_interfaces_nl(struct ifconfig_args *args)
 
 	nl_init_socket(&ss);
 
-       struct ifmap *ifmap = prepare_ifmap(&ss, args->ifname);
+	struct ifmap *ifmap = prepare_ifmap(&ss, args->ifname);
 	struct iface **sorted_ifaces = snl_allocz(&ss, ifmap->count * sizeof(void *));
 	for (uint32_t i = 0, num = 0; i < ifmap->size; i++) {
 		if (ifmap->ifaces[i] != NULL) {
@@ -493,3 +493,20 @@ list_interfaces_nl(struct ifconfig_args *args)
 	snl_free(&ss);
 }
 
+void
+ifcreate_nl(if_ctx *ctx, struct nlmsghdr *hdr)
+{
+	struct snl_state *ss = ctx->io_ss;
+	struct snl_errmsg_data errmsg = {};
+
+	if (!snl_send_message(ss, hdr))
+		err(1, "unable to send netlink message");
+
+	hdr = snl_read_reply(ss, hdr->nlmsg_seq);
+	if (hdr->nlmsg_type != NL_RTM_NEWLINK) {
+		if (!snl_parse_errmsg(ss, hdr, &errmsg))
+			errx(EINVAL, "(NETLINK)");
+		if (errmsg.error_str != NULL)
+			errx(errmsg.error, "(NETLINK) %s", errmsg.error_str);
+	}
+}

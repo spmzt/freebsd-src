@@ -879,7 +879,7 @@ flushroutes_fib_nl(int fib, int af)
 	uint32_t nlm_seq = hdr->nlmsg_seq;
 
 	nl_helper_init(&h);
-	
+
 	while ((hdr = snl_read_reply_multi(&ss, nlm_seq, &e)) != NULL) {
 		struct snl_parsed_route r = { .rtax_weight = RT_DEFAULT_WEIGHT };
 		int error;
