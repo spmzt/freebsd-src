@@ -109,6 +109,7 @@ struct gre_softc {
 	CK_LIST_ENTRY(gre_softc) chain;
 	CK_LIST_ENTRY(gre_softc) srchash;
 };
+
 MALLOC_DECLARE(M_GRE);
 
 #ifndef GRE_HASH_SIZE
@@ -158,6 +159,15 @@ int	in6_gre_output(struct mbuf *, int, int, uint32_t);
  */
 #define ETHERTYPE_WCCP		0x883E
 #endif /* _KERNEL */
+
+struct nl_parsed_gre {
+	struct sockaddr		*ifla_local;
+	struct sockaddr		*ifla_remote;
+	uint32_t		ifla_flags;
+	uint32_t		ifla_okey;
+	uint32_t		ifla_encap_type;
+	uint16_t		ifla_encap_sport;
+};
 
 #define GRESADDRS	_IOW('i', 101, struct ifreq)
 #define GRESADDRD	_IOW('i', 102, struct ifreq)
