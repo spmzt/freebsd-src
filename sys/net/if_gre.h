@@ -82,6 +82,28 @@ struct gre_socket {
 	struct epoch_context	epoch_ctx;
 };
 
+struct gre_priv {
+	union {
+#ifdef INET
+		struct greip	priv_ip;
+		struct greudp	priv_udp;
+#endif
+#ifdef INET6
+		struct greip6	priv_ip6;
+		struct greudp6	priv_udp6;
+#endif
+	};
+	uint16_t		priv_csum, _reserved;
+	uint32_t		priv_key, priv_seq;
+
+	/* the following fields are not part of header */
+	int			priv_family;
+	uint32_t		priv_options;
+	uint32_t		priv_csumflags;
+	uint32_t		priv_hlen;
+	struct epoch_context	epoch_ctx;
+};
+
 struct gre_softc {
 	struct ifnet		*gre_ifp;
 	int			gre_family;	/* AF of delivery header */
@@ -89,21 +111,10 @@ struct gre_softc {
 	uint32_t		gre_oseq;
 	uint32_t		gre_key;
 	uint32_t		gre_options;
-	uint32_t		gre_csumflags;
 	uint32_t		gre_port;
 	u_int			gre_fibnum;
-	u_int			gre_hlen;	/* header size */
-	union {
-		void		*hdr;
-#ifdef INET
-		struct greip	*iphdr;
-		struct greudp	*udphdr;
-#endif
-#ifdef INET6
-		struct greip6	*ip6hdr;
-		struct greudp6	*udp6hdr;
-#endif
-	} gre_uhdr;
+
+	struct gre_priv		*gre_data;
 	struct gre_socket	*gre_so;
 
 	CK_LIST_ENTRY(gre_softc) chain;
@@ -121,16 +132,15 @@ MALLOC_DECLARE(M_GRE);
 #define	GRE_RUNLOCK()		epoch_exit_preempt(net_epoch_preempt, &gre_et)
 #define	GRE_WAIT()		epoch_wait_preempt(net_epoch_preempt)
 
-#define	gre_hdr			gre_uhdr.hdr
-#define	gre_iphdr		gre_uhdr.iphdr
-#define	gre_ip6hdr		gre_uhdr.ip6hdr
-#define	gre_udphdr		gre_uhdr.udphdr
-#define	gre_udp6hdr		gre_uhdr.udp6hdr
+#define	gre_iphdr		gre_data->priv_ip
+#define	gre_ip6hdr		gre_data->priv_ip6
+#define	gre_udphdr		gre_data->priv_udp
+#define	gre_udp6hdr		gre_data->priv_udp6
 
-#define	gre_oip			gre_iphdr->gi_ip
-#define	gre_udp			gre_udphdr->gi_udp
-#define	gre_oip6		gre_ip6hdr->gi6_ip6
-#define	gre_udp6		gre_udp6hdr->gi6_udp
+#define	gre_oip			gre_iphdr.gi_ip
+#define	gre_udp			gre_udphdr.gi_udp
+#define	gre_oip6		gre_ip6hdr.gi6_ip6
+#define	gre_udp6		gre_udp6hdr.gi6_udp
 
 struct gre_list *gre_hashinit(void);
 void gre_hashdestroy(struct gre_list *);
@@ -138,7 +148,8 @@ void gre_hashdestroy(struct gre_list *);
 int	gre_input(struct mbuf *, int, int, void *);
 void	gre_update_hdr(struct gre_softc *, struct grehdr *);
 void	gre_update_udphdr(struct gre_softc *, struct udphdr *, uint16_t);
-void	gre_sofree(epoch_context_t);
+void	gre_update_priv(struct gre_softc *, int);
+void	gre_update_socket(struct gre_softc *);
 
 void	in_gre_init(void);
 void	in_gre_uninit(void);

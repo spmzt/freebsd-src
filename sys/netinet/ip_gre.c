@@ -2,7 +2,7 @@
  * SPDX-License-Identifier: BSD-2-Clause
  *
  * Copyright (c) 1998 The NetBSD Foundation, Inc.
- * Copyright (c) 2014, 2018 Andrey V. Elsukov <ae@FreeBSD.org>
+ * Copyright (c) 2014-2026 Andrey V. Elsukov <ae@FreeBSD.org>
  * All rights reserved.
  *
  * This code is derived from software contributed to The NetBSD Foundation
@@ -127,6 +127,7 @@ in_gre_checkdup(const struct gre_softc *sc, in_addr_t src, in_addr_t dst,
 	struct gre_softc *tmp;
 	struct gre_socket *gs;
 
+	/* NOTE: we are protected with gre_ioctl_sx lock */
 	if (sc->gre_family == AF_INET &&
 	    sc->gre_oip.ip_src.s_addr == src &&
 	    sc->gre_oip.ip_dst.s_addr == dst &&
@@ -183,13 +184,12 @@ in_gre_lookup(const struct mbuf *m, int off, int proto, void **arg)
  * Check that ingress address belongs to local host.
  */
 static void
-in_gre_set_running(struct gre_softc *sc)
+in_gre_set_running(struct ifnet *ifp, struct in_addr src)
 {
-
-	if (in_localip(sc->gre_oip.ip_src))
-		GRE2IFP(sc)->if_drv_flags |= IFF_DRV_RUNNING;
+	if (in_localip(src))
+		ifp->if_drv_flags |= IFF_DRV_RUNNING;
 	else
-		GRE2IFP(sc)->if_drv_flags &= ~IFF_DRV_RUNNING;
+		ifp->if_drv_flags &= ~IFF_DRV_RUNNING;
 }
 
 /*
@@ -213,7 +213,7 @@ in_gre_srcaddr(void *arg __unused, const struct sockaddr *sa,
 	CK_LIST_FOREACH(sc, &GRE_SRCHASH(sin->sin_addr.s_addr), srchash) {
 		if (sc->gre_oip.ip_src.s_addr != sin->sin_addr.s_addr)
 			continue;
-		in_gre_set_running(sc);
+		in_gre_set_running(GRE2IFP(sc), sin->sin_addr);
 	}
 }
 
@@ -265,12 +265,8 @@ in_gre_setup_socket(struct gre_softc *sc)
 	if (gs != NULL) {
 		s = __containerof(gs, struct in_gre_socket, base);
 		if (s->addr != addr) {
-			if (CK_LIST_EMPTY(&gs->list)) {
-				CK_LIST_REMOVE(gs, chain);
-				soclose(gs->so);
-				NET_EPOCH_CALL(gre_sofree, &gs->epoch_ctx);
-			}
-			gs = sc->gre_so = NULL;
+			gre_update_socket(sc);
+			gs = NULL;
 		}
 	}
 
@@ -348,21 +344,23 @@ static int
 in_gre_attach(struct gre_softc *sc)
 {
 	struct epoch_tracker et;
+	struct gre_priv *priv = sc->gre_data;
 	struct grehdr *gh;
 	int error;
 
+	sc->gre_family = priv->priv_family = AF_INET;
 	if (sc->gre_options & GRE_UDPENCAP) {
-		sc->gre_csumflags = CSUM_UDP;
-		sc->gre_hlen = sizeof(struct greudp);
+		priv->priv_csumflags = CSUM_UDP;
+		priv->priv_hlen = sizeof(struct greudp);
 		sc->gre_oip.ip_p = IPPROTO_UDP;
-		gh = &sc->gre_udphdr->gi_gre;
+		gh = &sc->gre_udphdr.gi_gre;
 		gre_update_udphdr(sc, &sc->gre_udp,
 		    in_pseudo(sc->gre_oip.ip_src.s_addr,
 		    sc->gre_oip.ip_dst.s_addr, 0));
 	} else {
-		sc->gre_hlen = sizeof(struct greip);
+		priv->priv_hlen = sizeof(struct greip);
 		sc->gre_oip.ip_p = IPPROTO_GRE;
-		gh = &sc->gre_iphdr->gi_gre;
+		gh = &sc->gre_iphdr.gi_gre;
 	}
 	sc->gre_oip.ip_v = IPVERSION;
 	sc->gre_oip.ip_hl = sizeof(struct ip) >> 2;
@@ -370,7 +368,7 @@ in_gre_attach(struct gre_softc *sc)
 
 	/*
 	 * If we return error, this means that sc is not linked,
-	 * and caller should reset gre_family and free(sc->gre_hdr).
+	 * and caller should reset gre_family.
 	 */
 	if (sc->gre_options & GRE_UDPENCAP) {
 		error = in_gre_setup_socket(sc);
@@ -378,12 +376,11 @@ in_gre_attach(struct gre_softc *sc)
 			return (error);
 	} else
 		CK_LIST_INSERT_HEAD(&GRE_HASH_SC(sc), sc, chain);
-	CK_LIST_INSERT_HEAD(&GRE_SRCHASH(sc->gre_oip.ip_src.s_addr),
-	    sc, srchash);
+	CK_LIST_INSERT_HEAD(&GRE_SRCHASH(sc->gre_oip.ip_src.s_addr), sc, srchash);
 
 	/* Set IFF_DRV_RUNNING if interface is ready */
 	NET_EPOCH_ENTER(et);
-	in_gre_set_running(sc);
+	in_gre_set_running(GRE2IFP(sc), sc->gre_oip.ip_src);
 	NET_EPOCH_EXIT(et);
 	return (0);
 }
@@ -408,9 +405,7 @@ in_gre_setopts(struct gre_softc *sc, u_long cmd, uint32_t value)
 		sc->gre_oip.ip_dst.s_addr, value) == EADDRNOTAVAIL)
 		return (EEXIST);
 
-	CK_LIST_REMOVE(sc, chain);
-	CK_LIST_REMOVE(sc, srchash);
-	GRE_WAIT();
+	gre_update_priv(sc, sizeof(struct ip));
 	switch (cmd) {
 	case GRESKEY:
 		sc->gre_key = value;
@@ -423,10 +418,8 @@ in_gre_setopts(struct gre_softc *sc, u_long cmd, uint32_t value)
 		break;
 	}
 	error = in_gre_attach(sc);
-	if (error != 0) {
+	if (error != 0)
 		sc->gre_family = 0;
-		free(sc->gre_hdr, M_GRE);
-	}
 	return (error);
 }
 
@@ -470,27 +463,17 @@ in_gre_ioctl(struct gre_softc *sc, u_long cmd, caddr_t data)
 			error = 0;
 			break;
 		}
-		ip = malloc(sizeof(struct greudp) + 3 * sizeof(uint32_t),
-		    M_GRE, M_WAITOK | M_ZERO);
-		ip->ip_src.s_addr = src->sin_addr.s_addr;
-		ip->ip_dst.s_addr = dst->sin_addr.s_addr;
-		if (sc->gre_family != 0) {
-			/* Detach existing tunnel first */
-			CK_LIST_REMOVE(sc, chain);
-			CK_LIST_REMOVE(sc, srchash);
-			GRE_WAIT();
-			free(sc->gre_hdr, M_GRE);
-			/* XXX: should we notify about link state change? */
-		}
-		sc->gre_family = AF_INET;
-		sc->gre_hdr = ip;
+		if (sc->gre_family != 0)
+			gre_update_priv(sc, 0);
 		sc->gre_oseq = 0;
 		sc->gre_iseq = UINT32_MAX;
+
+		ip = &sc->gre_oip;
+		ip->ip_src.s_addr = src->sin_addr.s_addr;
+		ip->ip_dst.s_addr = dst->sin_addr.s_addr;
 		error = in_gre_attach(sc);
-		if (error != 0) {
+		if (error != 0)
 			sc->gre_family = 0;
-			free(sc->gre_hdr, M_GRE);
-		}
 		break;
 	case SIOCGIFPSRCADDR:
 	case SIOCGIFPDSTADDR:

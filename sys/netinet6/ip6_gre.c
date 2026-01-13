@@ -1,5 +1,5 @@
 /*-
- * Copyright (c) 2014, 2018 Andrey V. Elsukov <ae@FreeBSD.org>
+ * Copyright (c) 2014-2026 Andrey V. Elsukov <ae@FreeBSD.org>
  * All rights reserved.
  *
  * Redistribution and use in source and binary forms, with or without
@@ -118,6 +118,7 @@ in6_gre_checkdup(const struct gre_softc *sc, const struct in6_addr *src,
 	struct gre_softc *tmp;
 	struct gre_socket *gs;
 
+	/* NOTE: we are protected with gre_ioctl_sx lock */
 	if (sc->gre_family == AF_INET6 &&
 	    IN6_ARE_ADDR_EQUAL(&sc->gre_oip6.ip6_src, src) &&
 	    IN6_ARE_ADDR_EQUAL(&sc->gre_oip6.ip6_dst, dst) &&
@@ -175,13 +176,12 @@ in6_gre_lookup(const struct mbuf *m, int off, int proto, void **arg)
  * Check that ingress address belongs to local host.
  */
 static void
-in6_gre_set_running(struct gre_softc *sc)
+in6_gre_set_running(struct ifnet *ifp, struct in6_addr *src)
 {
-
-	if (in6_localip(&sc->gre_oip6.ip6_src))
-		GRE2IFP(sc)->if_drv_flags |= IFF_DRV_RUNNING;
+	if (in6_localip(src))
+		ifp->if_drv_flags |= IFF_DRV_RUNNING;
 	else
-		GRE2IFP(sc)->if_drv_flags &= ~IFF_DRV_RUNNING;
+		ifp->if_drv_flags &= ~IFF_DRV_RUNNING;
 }
 
 /*
@@ -206,7 +206,7 @@ in6_gre_srcaddr(void *arg __unused, const struct sockaddr *sa,
 		if (IN6_ARE_ADDR_EQUAL(&sc->gre_oip6.ip6_src,
 		    &sin->sin6_addr) == 0)
 			continue;
-		in6_gre_set_running(sc);
+		in6_gre_set_running(GRE2IFP(sc), &sc->gre_oip6.ip6_src);
 	}
 }
 
@@ -260,12 +260,8 @@ in6_gre_setup_socket(struct gre_softc *sc)
 	if (gs != NULL) {
 		s = __containerof(gs, struct in6_gre_socket, base);
 		if (!IN6_ARE_ADDR_EQUAL(&s->addr, &sc->gre_oip6.ip6_src)) {
-			if (CK_LIST_EMPTY(&gs->list)) {
-				CK_LIST_REMOVE(gs, chain);
-				soclose(gs->so);
-				NET_EPOCH_CALL(gre_sofree, &gs->epoch_ctx);
-			}
-			gs = sc->gre_so = NULL;
+			gre_update_socket(sc);
+			gs = NULL;
 		}
 	}
 
@@ -351,27 +347,30 @@ fail:
 static int
 in6_gre_attach(struct gre_softc *sc)
 {
+	struct epoch_tracker et;
+	struct gre_priv *priv = sc->gre_data;
 	struct grehdr *gh;
 	int error;
 
+	sc->gre_family = priv->priv_family = AF_INET6;
 	if (sc->gre_options & GRE_UDPENCAP) {
-		sc->gre_csumflags = CSUM_UDP_IPV6;
-		sc->gre_hlen = sizeof(struct greudp6);
+		priv->priv_csumflags = CSUM_UDP_IPV6;
+		priv->priv_hlen = sizeof(struct greudp6);
 		sc->gre_oip6.ip6_nxt = IPPROTO_UDP;
-		gh = &sc->gre_udp6hdr->gi6_gre;
+		gh = &sc->gre_udp6hdr.gi6_gre;
 		gre_update_udphdr(sc, &sc->gre_udp6,
 		    in6_cksum_pseudo(&sc->gre_oip6, 0, 0, 0));
 	} else {
-		sc->gre_hlen = sizeof(struct greip6);
+		priv->priv_hlen = sizeof(struct greip6);
 		sc->gre_oip6.ip6_nxt = IPPROTO_GRE;
-		gh = &sc->gre_ip6hdr->gi6_gre;
+		gh = &sc->gre_ip6hdr.gi6_gre;
 	}
 	sc->gre_oip6.ip6_vfc = IPV6_VERSION;
 	gre_update_hdr(sc, gh);
 
 	/*
 	 * If we return error, this means that sc is not linked,
-	 * and caller should reset gre_family and free(sc->gre_hdr).
+	 * and caller should reset gre_family.
 	 */
 	if (sc->gre_options & GRE_UDPENCAP) {
 		error = in6_gre_setup_socket(sc);
@@ -382,7 +381,9 @@ in6_gre_attach(struct gre_softc *sc)
 	CK_LIST_INSERT_HEAD(&GRE_SRCHASH(&sc->gre_oip6.ip6_src), sc, srchash);
 
 	/* Set IFF_DRV_RUNNING if interface is ready */
-	in6_gre_set_running(sc);
+	NET_EPOCH_ENTER(et);
+	in6_gre_set_running(GRE2IFP(sc), &sc->gre_oip6.ip6_src);
+	NET_EPOCH_EXIT(et);
 	return (0);
 }
 
@@ -406,9 +407,7 @@ in6_gre_setopts(struct gre_softc *sc, u_long cmd, uint32_t value)
 		&sc->gre_oip6.ip6_dst, value) == EADDRNOTAVAIL)
 		return (EEXIST);
 
-	CK_LIST_REMOVE(sc, chain);
-	CK_LIST_REMOVE(sc, srchash);
-	GRE_WAIT();
+	gre_update_priv(sc, sizeof(struct ip6_hdr));
 	switch (cmd) {
 	case GRESKEY:
 		sc->gre_key = value;
@@ -421,10 +420,8 @@ in6_gre_setopts(struct gre_softc *sc, u_long cmd, uint32_t value)
 		break;
 	}
 	error = in6_gre_attach(sc);
-	if (error != 0) {
+	if (error != 0)
 		sc->gre_family = 0;
-		free(sc->gre_hdr, M_GRE);
-	}
 	return (error);
 }
 
@@ -477,27 +474,17 @@ in6_gre_ioctl(struct gre_softc *sc, u_long cmd, caddr_t data)
 			error = 0;
 			break;
 		}
-		ip6 = malloc(sizeof(struct greudp6) + 3 * sizeof(uint32_t),
-		    M_GRE, M_WAITOK | M_ZERO);
-		ip6->ip6_src = src->sin6_addr;
-		ip6->ip6_dst = dst->sin6_addr;
-		if (sc->gre_family != 0) {
-			/* Detach existing tunnel first */
-			CK_LIST_REMOVE(sc, chain);
-			CK_LIST_REMOVE(sc, srchash);
-			GRE_WAIT();
-			free(sc->gre_hdr, M_GRE);
-			/* XXX: should we notify about link state change? */
-		}
-		sc->gre_family = AF_INET6;
-		sc->gre_hdr = ip6;
+		if (sc->gre_family != 0)
+			gre_update_priv(sc, 0);
 		sc->gre_oseq = 0;
 		sc->gre_iseq = UINT32_MAX;
+
+		ip6 = &sc->gre_ip6hdr.gi6_ip6;
+		ip6->ip6_src = src->sin6_addr;
+		ip6->ip6_dst = dst->sin6_addr;
 		error = in6_gre_attach(sc);
-		if (error != 0) {
+		if (error != 0)
 			sc->gre_family = 0;
-			free(sc->gre_hdr, M_GRE);
-		}
 		break;
 	case SIOCGIFPSRCADDR_IN6:
 	case SIOCGIFPDSTADDR_IN6:

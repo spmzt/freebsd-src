@@ -2,7 +2,7 @@
  * SPDX-License-Identifier: BSD-2-Clause
  *
  * Copyright (c) 1998 The NetBSD Foundation, Inc.
- * Copyright (c) 2014, 2018 Andrey V. Elsukov <ae@FreeBSD.org>
+ * Copyright (c) 2014-2026 Andrey V. Elsukov <ae@FreeBSD.org>
  * All rights reserved.
  *
  * This code is derived from software contributed to The NetBSD Foundation
@@ -114,6 +114,8 @@ static int	gre_transmit(struct ifnet *, struct mbuf *);
 static int	gre_ioctl(struct ifnet *, u_long, caddr_t);
 static int	gre_output(struct ifnet *, struct mbuf *,
 		    const struct sockaddr *, struct route *);
+static void	gre_free_socket(epoch_context_t);
+static void	gre_free_priv(epoch_context_t);
 static void	gre_delete_tunnel(struct gre_softc *);
 
 SYSCTL_DECL(_net_link);
@@ -139,7 +141,6 @@ SYSCTL_INT(_net_link_gre, OID_AUTO, max_nesting, CTLFLAG_RW | CTLFLAG_VNET,
 static void
 vnet_gre_init(const void *unused __unused)
 {
-
 	V_gre_cloner = if_clone_simple(grename, gre_clone_create,
 	    gre_clone_destroy, 0);
 #ifdef INET
@@ -155,7 +156,6 @@ VNET_SYSINIT(vnet_gre_init, SI_SUB_PROTO_IFATTACHDOMAIN, SI_ORDER_ANY,
 static void
 vnet_gre_uninit(const void *unused __unused)
 {
-
 	if_clone_detach(V_gre_cloner);
 #ifdef INET
 	in_gre_uninit();
@@ -174,6 +174,7 @@ gre_clone_create(struct if_clone *ifc, int unit, caddr_t params)
 	struct gre_softc *sc;
 
 	sc = malloc(sizeof(struct gre_softc), M_GRE, M_WAITOK | M_ZERO);
+	sc->gre_data = malloc(sizeof(struct gre_priv), M_GRE, M_WAITOK | M_ZERO);
 	sc->gre_fibnum = curthread->td_proc->p_fibnum;
 	GRE2IFP(sc) = if_alloc(IFT_TUNNEL);
 	GRE2IFP(sc)->if_softc = sc;
@@ -218,13 +219,14 @@ gre_clone_destroy(struct ifnet *ifp)
 	sx_xlock(&gre_ioctl_sx);
 	sc = ifp->if_softc;
 	gre_delete_tunnel(sc);
+	sx_xunlock(&gre_ioctl_sx);
+	GRE_WAIT();
 	bpfdetach(ifp);
 	if_detach(ifp);
 	ifp->if_softc = NULL;
-	sx_xunlock(&gre_ioctl_sx);
 
-	GRE_WAIT();
 	if_free(ifp);
+	free(sc->gre_data, M_GRE);
 	free(sc, M_GRE);
 }
 
@@ -303,6 +305,7 @@ gre_ioctl(struct ifnet *ifp, u_long cmd, caddr_t data)
 		if ((error = copyin(ifr_data_get_ptr(ifr), &opt,
 		    sizeof(opt))) != 0)
 			break;
+		/* Check if any option has actually been changed */
 		if (cmd == GRESKEY) {
 			if (sc->gre_key == opt)
 				break;
@@ -354,10 +357,6 @@ gre_ioctl(struct ifnet *ifp, u_long cmd, caddr_t data)
 				sc->gre_port = opt;
 			break;
 		}
-		/*
-		 * XXX: Do we need to initiate change of interface
-		 * state here?
-		 */
 		break;
 	case GREGKEY:
 		error = copyout(&sc->gre_key, ifr_data_get_ptr(ifr),
@@ -392,29 +391,51 @@ end:
 	return (error);
 }
 
+void
+gre_update_priv(struct gre_softc *sc, int hlen)
+{
+	struct gre_priv *priv = sc->gre_data;
+
+	MPASS(sc->gre_family != 0);
+	sx_assert(&gre_ioctl_sx, SA_XLOCKED);
+
+	/* Detach gre_data, schedule deferred free, and allocate new priv */
+	CK_LIST_REMOVE(sc, chain); /* hashtbl or sockhash */
+	CK_LIST_REMOVE(sc, srchash);
+	NET_EPOCH_CALL(gre_free_priv, &priv->epoch_ctx);
+	sc->gre_family = 0;
+	sc->gre_data = malloc(sizeof(struct gre_priv), M_GRE, M_WAITOK | M_ZERO);
+	if (hlen > 0)
+		bcopy(priv, sc->gre_data, hlen);
+}
+
+void
+gre_update_socket(struct gre_softc *sc)
+{
+	struct gre_socket *gs = sc->gre_so;
+
+	MPASS(gs != NULL);
+	sx_assert(&gre_ioctl_sx, SA_XLOCKED);
+
+	if (CK_LIST_EMPTY(&gs->list)) {
+		CK_LIST_REMOVE(gs, chain);
+		NET_EPOCH_CALL(gre_free_socket, &gs->epoch_ctx);
+		sc->gre_so = NULL;
+	}
+}
+
 static void
 gre_delete_tunnel(struct gre_softc *sc)
 {
-	struct gre_socket *gs;
-
 	sx_assert(&gre_ioctl_sx, SA_XLOCKED);
-	if (sc->gre_family != 0) {
-		CK_LIST_REMOVE(sc, chain);
-		CK_LIST_REMOVE(sc, srchash);
-		GRE_WAIT();
-		free(sc->gre_hdr, M_GRE);
-		sc->gre_family = 0;
-	}
+	if (sc->gre_family != 0)
+		gre_update_priv(sc, 0);
 	/*
 	 * If this Tunnel was the last one that could use UDP socket,
 	 * we should unlink socket from hash table and close it.
 	 */
-	if ((gs = sc->gre_so) != NULL && CK_LIST_EMPTY(&gs->list)) {
-		CK_LIST_REMOVE(gs, chain);
-		soclose(gs->so);
-		NET_EPOCH_CALL(gre_sofree, &gs->epoch_ctx);
-		sc->gre_so = NULL;
-	}
+	if (sc->gre_so != NULL)
+		gre_update_socket(sc);
 	GRE2IFP(sc)->if_drv_flags &= ~IFF_DRV_RUNNING;
 	if_link_state_change(GRE2IFP(sc), LINK_STATE_DOWN);
 }
@@ -436,17 +457,26 @@ gre_hashinit(void)
 void
 gre_hashdestroy(struct gre_list *hash)
 {
-
 	free(hash, M_GRE);
 }
 
 void
-gre_sofree(epoch_context_t ctx)
+gre_free_socket(epoch_context_t ctx)
 {
 	struct gre_socket *gs;
 
 	gs = __containerof(ctx, struct gre_socket, epoch_ctx);
+	soclose(gs->so);
 	free(gs, M_GRE);
+}
+
+static void
+gre_free_priv(epoch_context_t ctx)
+{
+	struct gre_priv *priv;
+
+	priv = __containerof(ctx, struct gre_priv, epoch_ctx);
+	free(priv, M_GRE);
 }
 
 static __inline uint16_t
@@ -461,7 +491,6 @@ gre_cksum_add(uint16_t sum, uint16_t a)
 void
 gre_update_udphdr(struct gre_softc *sc, struct udphdr *udp, uint16_t csum)
 {
-
 	sx_assert(&gre_ioctl_sx, SA_XLOCKED);
 	MPASS(sc->gre_options & GRE_UDPENCAP);
 
@@ -474,30 +503,33 @@ gre_update_udphdr(struct gre_softc *sc, struct udphdr *udp, uint16_t csum)
 void
 gre_update_hdr(struct gre_softc *sc, struct grehdr *gh)
 {
+	struct gre_priv *priv = sc->gre_data;
 	uint32_t *opts;
 	uint16_t flags;
 
 	sx_assert(&gre_ioctl_sx, SA_XLOCKED);
-
 	flags = 0;
 	opts = gh->gre_opts;
 	if (sc->gre_options & GRE_ENABLE_CSUM) {
 		flags |= GRE_FLAGS_CP;
-		sc->gre_hlen += 2 * sizeof(uint16_t);
+		priv->priv_hlen += 2 * sizeof(uint16_t);
 		*opts++ = 0;
 	}
 	if (sc->gre_key != 0) {
 		flags |= GRE_FLAGS_KP;
-		sc->gre_hlen += sizeof(uint32_t);
+		priv->priv_hlen += sizeof(uint32_t);
 		*opts++ = htonl(sc->gre_key);
 	}
 	if (sc->gre_options & GRE_ENABLE_SEQ) {
 		flags |= GRE_FLAGS_SP;
-		sc->gre_hlen += sizeof(uint32_t);
+		priv->priv_hlen += sizeof(uint32_t);
 		*opts++ = 0;
 	} else
 		sc->gre_oseq = 0;
 	gh->gre_flags = htons(flags);
+
+	/* update priv_options, this field will be used on transmit */
+	priv->priv_options = sc->gre_options;
 }
 
 int
@@ -513,6 +545,8 @@ gre_input(struct mbuf *m, int off, int proto, void *arg)
 	uint16_t flags;
 	int hlen, isr, af;
 
+	NET_EPOCH_ASSERT();
+
 	ifp = GRE2IFP(sc);
 	hlen = off + sizeof(struct grehdr) + 4 * sizeof(uint32_t);
 	if (m->m_pkthdr.len < hlen)
@@ -527,7 +561,7 @@ gre_input(struct mbuf *m, int off, int proto, void *arg)
 	if (flags & ~GRE_FLAGS_MASK)
 		goto drop;
 	opts = gh->gre_opts;
-	hlen = 2 * sizeof(uint16_t);
+	hlen = sizeof(struct grehdr);
 	if (flags & GRE_FLAGS_CP) {
 		/* reserved1 field must be zero */
 		if (((uint16_t *)opts)[1] != 0)
@@ -641,11 +675,11 @@ gre_setseqn(struct grehdr *gh, uint32_t seq)
 }
 
 static uint32_t
-gre_flowid(struct gre_softc *sc, struct mbuf *m, uint32_t af)
+gre_flowid(struct gre_priv *priv, struct mbuf *m, uint32_t af)
 {
 	uint32_t flowid = 0;
 
-	if ((sc->gre_options & GRE_UDPENCAP) == 0 || sc->gre_port != 0)
+	if ((priv->priv_options & GRE_UDPENCAP) == 0)
 		return (flowid);
 	switch (af) {
 #ifdef INET
@@ -683,6 +717,7 @@ gre_transmit(struct ifnet *ifp, struct mbuf *m)
 {
 	GRE_RLOCK_TRACKER;
 	struct gre_softc *sc;
+	struct gre_priv *priv;
 	struct grehdr *gh;
 	struct udphdr *uh;
 	uint32_t af, flowid;
@@ -700,10 +735,11 @@ gre_transmit(struct ifnet *ifp, struct mbuf *m)
 #endif
 	error = ENETDOWN;
 	sc = ifp->if_softc;
+	priv = sc->gre_data;
 	if ((ifp->if_flags & IFF_MONITOR) != 0 ||
 	    (ifp->if_flags & IFF_UP) == 0 ||
 	    (ifp->if_drv_flags & IFF_DRV_RUNNING) == 0 ||
-	    sc->gre_family == 0 ||
+	    priv->priv_family == 0 ||
 	    (error = if_tunnel_check_nesting(ifp, m, MTAG_GRE,
 		V_max_gre_nesting)) != 0) {
 		m_freem(m);
@@ -712,14 +748,14 @@ gre_transmit(struct ifnet *ifp, struct mbuf *m)
 	af = m->m_pkthdr.csum_data;
 	BPF_MTAP2(ifp, &af, sizeof(af), m);
 	m->m_flags &= ~(M_BCAST|M_MCAST);
-	flowid = gre_flowid(sc, m, af);
+	flowid = gre_flowid(priv, m, af);
 	M_SETFIB(m, sc->gre_fibnum);
-	M_PREPEND(m, sc->gre_hlen, M_NOWAIT);
+	M_PREPEND(m, priv->priv_hlen, M_NOWAIT);
 	if (m == NULL) {
 		error = ENOBUFS;
 		goto drop;
 	}
-	bcopy(sc->gre_hdr, mtod(m, void *), sc->gre_hlen);
+	bcopy(priv, mtod(m, void *), priv->priv_hlen);
 	/* Determine GRE proto */
 	switch (af) {
 #ifdef INET
@@ -738,7 +774,7 @@ gre_transmit(struct ifnet *ifp, struct mbuf *m)
 		goto drop;
 	}
 	/* Determine offset of GRE header */
-	switch (sc->gre_family) {
+	switch (priv->priv_family) {
 #ifdef INET
 	case AF_INET:
 		len = sizeof(struct ip);
@@ -754,7 +790,7 @@ gre_transmit(struct ifnet *ifp, struct mbuf *m)
 		error = ENETDOWN;
 		goto drop;
 	}
-	if (sc->gre_options & GRE_UDPENCAP) {
+	if (priv->priv_options & GRE_UDPENCAP) {
 		uh = (struct udphdr *)mtodo(m, len);
 		uh->uh_sport |= htons(V_ipport_hifirstauto) |
 		    (flowid >> 16) | (flowid & 0xFFFF);
@@ -763,28 +799,28 @@ gre_transmit(struct ifnet *ifp, struct mbuf *m)
 		uh->uh_ulen = htons(m->m_pkthdr.len - len);
 		uh->uh_sum = gre_cksum_add(uh->uh_sum,
 		    htons(m->m_pkthdr.len - len + IPPROTO_UDP));
-		m->m_pkthdr.csum_flags = sc->gre_csumflags;
+		m->m_pkthdr.csum_flags = priv->priv_csumflags;
 		m->m_pkthdr.csum_data = offsetof(struct udphdr, uh_sum);
 		len += sizeof(struct udphdr);
 	}
 	gh = (struct grehdr *)mtodo(m, len);
 	gh->gre_proto = proto;
-	if (sc->gre_options & GRE_ENABLE_SEQ)
+	if (priv->priv_options & GRE_ENABLE_SEQ)
 		gre_setseqn(gh, sc->gre_oseq++);
-	if (sc->gre_options & GRE_ENABLE_CSUM) {
+	if (priv->priv_options & GRE_ENABLE_CSUM) {
 		*(uint16_t *)gh->gre_opts = in_cksum_skip(m,
 		    m->m_pkthdr.len, len);
 	}
 	len = m->m_pkthdr.len - len;
-	switch (sc->gre_family) {
+	switch (priv->priv_family) {
 #ifdef INET
 	case AF_INET:
-		error = in_gre_output(m, af, sc->gre_hlen);
+		error = in_gre_output(m, af, priv->priv_hlen);
 		break;
 #endif
 #ifdef INET6
 	case AF_INET6:
-		error = in6_gre_output(m, af, sc->gre_hlen, flowid);
+		error = in6_gre_output(m, af, priv->priv_hlen, flowid);
 		break;
 #endif
 	default:
@@ -811,10 +847,11 @@ gre_qflush(struct ifnet *ifp __unused)
 static int
 gremodevent(module_t mod, int type, void *data)
 {
-
 	switch (type) {
 	case MOD_LOAD:
+		break;
 	case MOD_UNLOAD:
+		GRE_WAIT();
 		break;
 	default:
 		return (EOPNOTSUPP);
