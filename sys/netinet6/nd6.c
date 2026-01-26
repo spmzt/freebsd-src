@@ -216,6 +216,24 @@ nd6_lle_event(void *arg __unused, struct llentry *lle, int evt)
 }
 
 /*
+ * Sends gratuitous NAs for each ifaddr to notify other
+ * nodes about the address change.
+ */
+static __noinline void
+nd6_handle_ifllchange(struct ifnet *ifp)
+{
+	struct ifaddr *ifa;
+	struct epoch_tracker et;
+
+	NET_EPOCH_ENTER(et);
+	CK_STAILQ_FOREACH(ifa, &ifp->if_addrhead, ifa_link) {
+		if (ifa->ifa_addr->sa_family == AF_INET6)
+			nd6_grand_start(ifa, ND6_QUEUE_FLAG_LLADDR);
+	}
+	NET_EPOCH_EXIT(et);
+}
+
+/*
  * A handler for interface link layer address change event.
  */
 static void
@@ -226,6 +244,9 @@ nd6_iflladdr(void *arg __unused, struct ifnet *ifp)
 		return;
 
 	lltable_update_ifaddr(LLTABLE6(ifp));
+
+	if ((ifp->if_flags & IFF_UP) != 0)
+		nd6_handle_ifllchange(ifp);
 }
 
 void
@@ -321,6 +342,8 @@ nd6_ifattach(struct ifnet *ifp)
 			/* If we globally accept rtadv, assume IPv6 on. */
 			nd->nd_flags &= ~ND6_IFF_IFDISABLED;
 	}
+
+	nd6_queue_init(nd);
 }
 
 void
@@ -333,6 +356,9 @@ nd6_ifdetach(struct ifnet *ifp)
 	CK_STAILQ_FOREACH_SAFE(ifa, &ifp->if_addrhead, ifa_link, next) {
 		if (ifa->ifa_addr->sa_family != AF_INET6)
 			continue;
+
+		/* make sure there are no queued ND6 */
+		nd6_queue_stop(ifa);
 
 		/* stop DAD processing */
 		nd6_dad_stop(ifa);
