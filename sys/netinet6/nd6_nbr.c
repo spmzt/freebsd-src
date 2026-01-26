@@ -121,6 +121,29 @@ SYSCTL_INT(_net_inet6_icmp6, ICMPV6CTL_ND6_ONLINKNSRFC4861,
     &VNET_NAME(nd6_onlink_ns_rfc4861), 0,
     "Accept 'on-link' ICMPv6 NS messages in compliance with RFC 4861");
 
+struct nd6_queue {
+	TAILQ_ENTRY(nd6_queue) ndq_list;
+	struct ifaddr	*ndq_ifa;
+	uint32_t	ndq_flags;
+	uint32_t	ndq_refcnt;
+	struct callout	ndq_callout;
+};
+
+VNET_DEFINE_STATIC(TAILQ_HEAD(, nd6_queue), nd6_queue);
+VNET_DEFINE_STATIC(struct rwlock, ndq_rwlock);
+#define	V_nd6_queue		VNET(nd6_queue)
+#define	V_ndq_rwlock		VNET(ndq_rwlock)
+
+#define	NDQ_RLOCK()		rw_rlock(&V_ndq_rwlock)
+#define	NDQ_RUNLOCK()		rw_runlock(&V_ndq_rwlock)
+#define	NDQ_WLOCK()		rw_wlock(&V_ndq_rwlock)
+#define	NDQ_WUNLOCK()		rw_wunlock(&V_ndq_rwlock)
+
+#define	NDQ_LOCK_ASSERT()	rw_assert(&V_ndq_rwlock, RA_LOCKED);
+#define	NDQ_RLOCK_ASSERT()	rw_assert(&V_ndq_rwlock, RA_RLOCKED);
+#define	NDQ_WLOCK_ASSERT()	rw_assert(&V_ndq_rwlock, RA_WLOCKED);
+
+
 /*
  * Input a Neighbor Solicitation Message.
  *
@@ -1464,6 +1487,12 @@ nd6_dad_timer(void *arg)
 				ia->ia6_flags &= ~IN6_IFF_TENTATIVE;
 				if ((ifp->if_inet6->nd_flags & ND6_IFF_STABLEADDR) && !(ia->ia6_flags & IN6_IFF_TEMPORARY))
 					atomic_store_int(&DAD_FAILURES(ifp), 0);
+				/*
+				 * RFC 9131 Section 6.1.2: The first advertisement
+				 * SHOULD be sent as soon as an address changes the
+				 * state from tentative to preferred.
+				 */
+				nd6_grand_start(ifa, ND6_GRAND_FLAG_NEWGUA);
 			}
 
 			nd6log((LOG_DEBUG,
@@ -1631,4 +1660,200 @@ nd6_dad_na_input(struct ifaddr *ifa)
 	if (dp != NULL)
 		dp->dad_na_icount++;
 	DADQ_RUNLOCK();
+}
+
+void
+nd6_queue_init(void)
+{
+
+	rw_init(&V_ndq_rwlock, "nd6 queue");
+	TAILQ_INIT(&V_nd6_queue);
+}
+
+static struct nd6_queue *
+nd6_queue_find(struct ifaddr *ifa)
+{
+	struct nd6_queue *ndq;
+
+	NDQ_RLOCK();
+	TAILQ_FOREACH(ndq, &V_nd6_queue, ndq_list) {
+		if (ndq->ndq_ifa == ifa)
+			break;
+	}
+	NDQ_RUNLOCK();
+
+	return (ndq);
+}
+
+static void
+nd6_queue_rel(void *arg)
+{
+	struct nd6_queue *ndq = arg;
+
+	CURVNET_SET(ndq->ndq_ifa->ifa_ifp->if_vnet);
+	NDQ_WLOCK_ASSERT();
+	/*
+	 * Remove ndq from the nd6_queue and release the ndq's
+	 * reference.
+	 */
+	TAILQ_REMOVE(&V_nd6_queue, ndq, ndq_list);
+	if (refcount_release(&ndq->ndq_refcnt)) {
+		ifa_free(ndq->ndq_ifa);
+		free(ndq, M_IP6NDP);
+	}
+	NDQ_WUNLOCK();
+	CURVNET_RESTORE();
+}
+
+static void
+nd6_queue_timer(void *arg)
+{
+	struct nd6_queue *ndq = arg;
+	struct ifaddr *ifa = ndq->ndq_ifa;
+	struct ifnet *ifp = ndq->ndq_ifa->ifa_ifp;
+	struct in6_addr taddr6 = IN6ADDR_ANY_INIT;
+	struct epoch_tracker et;
+	int delay, tlladdr;
+	u_long flags;
+
+	CURVNET_SET(ndq->ndq_ifa->ifa_ifp->if_vnet);
+	KASSERT(ifa != NULL, ("ND6 queue entry %p with no address", ndq));
+
+	NET_EPOCH_ENTER(et);
+
+	tlladdr = ND6_NA_OPT_LLA;
+	flags = (V_ip6_forwarding) ? ND_NA_FLAG_ROUTER : 0;
+	if ((ifp->if_inet6->nd_flags & ND6_IFF_ACCEPT_RTADV) != 0 && V_ip6_norbit_raif)
+		flags &= ~ND_NA_FLAG_ROUTER;
+
+	/*
+	 * RFC 9131 Section 6.1.2: if new global address added,
+	 * use the all-routers multicast address.
+	 * If the address is preferred, then the Override flag SHOULD NOT be set.
+	 */
+	if ((ndq->ndq_flags & ND6_GRAND_FLAG_NEWGUA) != 0) {
+		taddr6 = in6addr_linklocal_allrouters;
+		/*
+		 * XXX: If the address is in the Optimistic state,
+		 * then the Override flag MUST NOT be set.
+		 * We don't support RFC 4429 yet.
+		 */
+		if ((ifp->if_inet6->nd_flags & ND6_IFF_PREFER_SOURCE) == 0)
+			flags |= ND_NA_FLAG_OVERRIDE;
+	}
+	/*
+	 * RFC 4891 Section 7.2.6: if link-layer address changed,
+	 * use the all-nodes multicast address.
+	 * The Override flag MAY be set to either zero or one.
+	 */
+	if ((ndq->ndq_flags & ND6_GRAND_FLAG_LLADDR) != 0) {
+		taddr6 = in6addr_linklocal_allnodes;
+		flags |= ND_NA_FLAG_OVERRIDE;
+	}
+
+	/* Wait at least a RetransTimer before removing from queue */
+	delay = ifp->if_inet6->nd_retrans * hz / 1000;
+	callout_reset(&ndq->ndq_callout, delay, nd6_queue_rel, ndq);
+	NDQ_WUNLOCK();
+
+	if (in6_setscope(&taddr6, ifp, NULL) != 0)
+		goto bad;
+
+	nd6_na_output_fib(ifp, &taddr6, IFA_IN6(ifa), flags, tlladdr, NULL, ifp->if_fib);
+
+bad:
+	NET_EPOCH_EXIT(et);
+	CURVNET_RESTORE();
+}
+
+static void
+nd6_queue_add(struct ifaddr *ifa, int delay, uint32_t flags)
+{
+	struct nd6_queue *ndq;
+	struct in6_ifaddr *ia = (struct in6_ifaddr *)ifa;
+	char ip6buf[INET6_ADDRSTRLEN];
+
+	NDQ_WLOCK_ASSERT();
+
+	ndq = malloc(sizeof(*ndq), M_IP6NDP, M_NOWAIT | M_ZERO);
+	if (ndq == NULL) {
+		log(LOG_ERR, "nd6_queue_start: memory allocation failed for "
+			"%s(%s)\n",
+			ip6_sprintf(ip6buf, &ia->ia_addr.sin6_addr),
+			ifa->ifa_ifp ? if_name(ifa->ifa_ifp) : "???");
+		return;
+	}
+	callout_init_rw(&ndq->ndq_callout, &V_ndq_rwlock, CALLOUT_RETURNUNLOCKED);
+	nd6log((LOG_DEBUG, "%s: send GRAND for %s\n", if_name(ifa->ifa_ifp),
+	    ip6_sprintf(ip6buf, &ia->ia_addr.sin6_addr)));
+
+	ndq->ndq_ifa = ifa;
+	ifa_ref(ndq->ndq_ifa);
+	ndq->ndq_flags = flags;
+
+	refcount_init(&ndq->ndq_refcnt, 1);
+	TAILQ_INSERT_TAIL(&V_nd6_queue, ndq, ndq_list);
+	callout_reset(&ndq->ndq_callout, delay, nd6_queue_timer, ndq);
+}
+
+/*
+ * Start Gratuitous Neighbor Discovery (GRAND) for specified address.
+ * Called after DAD completes and by interface link layer change event.
+ */
+void
+nd6_grand_start(struct ifaddr *ifa, uint32_t flags)
+{
+	struct nd6_queue *ndq;
+	int delay, count = 0;
+
+	/* If we don't need GRAND, don't do it. */
+	if (V_ip6_grand_count == 0 ||
+	    ifa->ifa_carp != NULL)
+		return;
+
+	/* Check if new address is global */
+	if ((flags & ND6_GRAND_FLAG_NEWGUA) != 0 &&
+	    in6_addrscope(IFA_IN6(ifa)) != IPV6_ADDR_SCOPE_GLOBAL)
+		return;
+
+	CURVNET_SET(ifa->ifa_ifp->if_vnet);
+	NDQ_WLOCK();
+	/*
+	 * RFC 9131 Section 6.1.2: These advertisements MUST be
+	 * separated by at least RetransTimer seconds.
+	 */
+	TAILQ_FOREACH(ndq, &V_nd6_queue, ndq_list) {
+		if (ndq->ndq_ifa->ifa_ifp != ifa->ifa_ifp)
+			continue;
+		/*
+		 * RFC 9131 Section 6.1.2: a node SHOULD send
+		 * up to MAX_NEIGHBOR_ADVERTISEMENT Neighbor Advertisement messages.
+		 * Make sure we don't queue GRAND more than V_ip6_grand_count
+		 * per interface.
+		 */
+		if (count >= V_ip6_grand_count)
+			goto ret;
+		count++;
+	}
+
+	delay = ifa->ifa_ifp->if_inet6->nd_retrans * hz / 1000;
+	nd6_queue_add(ifa, count * delay, flags);
+ret:
+	NDQ_WUNLOCK();
+	CURVNET_RESTORE();
+}
+
+/*
+ * drain GRAND queue. used for address removals.
+ */
+void
+nd6_queue_stop(struct ifaddr *ifa)
+{
+	struct nd6_queue *ndq;
+
+	ndq = nd6_queue_find(ifa);
+	if (ndq == NULL)
+		return;
+
+	callout_drain(&ndq->ndq_callout);
 }
