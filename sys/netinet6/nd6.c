@@ -265,7 +265,6 @@ nd6_init(void)
 	callout_reset(&V_nd6_timer_ch, hz, nd6_timer, curvnet);
 
 	nd6_dad_init();
-	nd6_queue_init();
 	if (IS_DEFAULT_VNET(curvnet)) {
 		lle_event_eh = EVENTHANDLER_REGISTER(lle_event, nd6_lle_event,
 		    NULL, EVENTHANDLER_PRI_ANY);

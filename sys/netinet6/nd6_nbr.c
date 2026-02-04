@@ -129,19 +129,18 @@ struct nd6_queue {
 	struct callout	ndq_callout;
 };
 
-VNET_DEFINE_STATIC(TAILQ_HEAD(, nd6_queue), nd6_queue);
-VNET_DEFINE_STATIC(struct rwlock, ndq_rwlock);
-#define	V_nd6_queue		VNET(nd6_queue)
-#define	V_ndq_rwlock		VNET(ndq_rwlock)
+static TAILQ_HEAD(, nd6_queue) nd6_queue = TAILQ_HEAD_INITIALIZER(nd6_queue);
+static struct rwlock ndq_rwlock;
+RW_SYSINIT(ndq_rwlock, &ndq_rwlock, "nd6 queue");
 
-#define	NDQ_RLOCK()		rw_rlock(&V_ndq_rwlock)
-#define	NDQ_RUNLOCK()		rw_runlock(&V_ndq_rwlock)
-#define	NDQ_WLOCK()		rw_wlock(&V_ndq_rwlock)
-#define	NDQ_WUNLOCK()		rw_wunlock(&V_ndq_rwlock)
+#define	NDQ_RLOCK()		rw_rlock(&ndq_rwlock)
+#define	NDQ_RUNLOCK()		rw_runlock(&ndq_rwlock)
+#define	NDQ_WLOCK()		rw_wlock(&ndq_rwlock)
+#define	NDQ_WUNLOCK()		rw_wunlock(&ndq_rwlock)
 
-#define	NDQ_LOCK_ASSERT()	rw_assert(&V_ndq_rwlock, RA_LOCKED);
-#define	NDQ_RLOCK_ASSERT()	rw_assert(&V_ndq_rwlock, RA_RLOCKED);
-#define	NDQ_WLOCK_ASSERT()	rw_assert(&V_ndq_rwlock, RA_WLOCKED);
+#define	NDQ_LOCK_ASSERT()	rw_assert(&ndq_rwlock, RA_LOCKED);
+#define	NDQ_RLOCK_ASSERT()	rw_assert(&ndq_rwlock, RA_RLOCKED);
+#define	NDQ_WLOCK_ASSERT()	rw_assert(&ndq_rwlock, RA_WLOCKED);
 
 
 /*
@@ -1662,21 +1661,13 @@ nd6_dad_na_input(struct ifaddr *ifa)
 	DADQ_RUNLOCK();
 }
 
-void
-nd6_queue_init(void)
-{
-
-	rw_init(&V_ndq_rwlock, "nd6 queue");
-	TAILQ_INIT(&V_nd6_queue);
-}
-
 static struct nd6_queue *
 nd6_queue_find(struct ifaddr *ifa)
 {
 	struct nd6_queue *ndq;
 
 	NDQ_RLOCK();
-	TAILQ_FOREACH(ndq, &V_nd6_queue, ndq_list) {
+	TAILQ_FOREACH(ndq, &nd6_queue, ndq_list) {
 		if (ndq->ndq_ifa == ifa)
 			break;
 	}
@@ -1690,19 +1681,17 @@ nd6_queue_rel(void *arg)
 {
 	struct nd6_queue *ndq = arg;
 
-	CURVNET_SET(ndq->ndq_ifa->ifa_ifp->if_vnet);
 	NDQ_WLOCK_ASSERT();
 	/*
 	 * Remove ndq from the nd6_queue and release the ndq's
 	 * reference.
 	 */
-	TAILQ_REMOVE(&V_nd6_queue, ndq, ndq_list);
+	TAILQ_REMOVE(&nd6_queue, ndq, ndq_list);
 	if (refcount_release(&ndq->ndq_refcnt)) {
 		ifa_free(ndq->ndq_ifa);
 		free(ndq, M_IP6NDP);
 	}
 	NDQ_WUNLOCK();
-	CURVNET_RESTORE();
 }
 
 static void
@@ -1783,7 +1772,7 @@ nd6_queue_add(struct ifaddr *ifa, int delay, uint32_t flags)
 			ifa->ifa_ifp ? if_name(ifa->ifa_ifp) : "???");
 		return;
 	}
-	callout_init_rw(&ndq->ndq_callout, &V_ndq_rwlock, CALLOUT_RETURNUNLOCKED);
+	callout_init_rw(&ndq->ndq_callout, &ndq_rwlock, CALLOUT_RETURNUNLOCKED);
 	nd6log((LOG_DEBUG, "%s: send GRAND for %s\n", if_name(ifa->ifa_ifp),
 	    ip6_sprintf(ip6buf, &ia->ia_addr.sin6_addr)));
 
@@ -1792,7 +1781,7 @@ nd6_queue_add(struct ifaddr *ifa, int delay, uint32_t flags)
 	ndq->ndq_flags = flags;
 
 	refcount_init(&ndq->ndq_refcnt, 1);
-	TAILQ_INSERT_TAIL(&V_nd6_queue, ndq, ndq_list);
+	TAILQ_INSERT_TAIL(&nd6_queue, ndq, ndq_list);
 	callout_reset(&ndq->ndq_callout, delay, nd6_queue_timer, ndq);
 }
 
@@ -1816,13 +1805,12 @@ nd6_grand_start(struct ifaddr *ifa, uint32_t flags)
 	    in6_addrscope(IFA_IN6(ifa)) != IPV6_ADDR_SCOPE_GLOBAL)
 		return;
 
-	CURVNET_SET(ifa->ifa_ifp->if_vnet);
-	NDQ_WLOCK();
 	/*
 	 * RFC 9131 Section 6.1.2: These advertisements MUST be
 	 * separated by at least RetransTimer seconds.
 	 */
-	TAILQ_FOREACH(ndq, &V_nd6_queue, ndq_list) {
+	NDQ_WLOCK();
+	TAILQ_FOREACH(ndq, &nd6_queue, ndq_list) {
 		if (ndq->ndq_ifa->ifa_ifp != ifa->ifa_ifp)
 			continue;
 		/*
@@ -1831,16 +1819,15 @@ nd6_grand_start(struct ifaddr *ifa, uint32_t flags)
 		 * Make sure we don't queue GRAND more than V_ip6_grand_count
 		 * per interface.
 		 */
+		count++;
 		if (count >= V_ip6_grand_count)
 			goto ret;
-		count++;
 	}
 
 	delay = ifa->ifa_ifp->if_inet6->nd_retrans * hz / 1000;
 	nd6_queue_add(ifa, count * delay, flags);
 ret:
 	NDQ_WUNLOCK();
-	CURVNET_RESTORE();
 }
 
 /*
