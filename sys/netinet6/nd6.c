@@ -226,7 +226,7 @@ nd6_handle_ifllchange(struct ifnet *ifp)
 
 	CK_STAILQ_FOREACH(ifa, &ifp->if_addrhead, ifa_link) {
 		if (ifa->ifa_addr->sa_family == AF_INET6)
-			nd6_grand_start(ifa, ND6_GRAND_FLAG_LLADDR);
+			nd6_grand_start(ifa, ND6_QUEUE_FLAG_LLADDR);
 	}
 }
 

@@ -1491,7 +1491,7 @@ nd6_dad_timer(void *arg)
 				 * SHOULD be sent as soon as an address changes the
 				 * state from tentative to preferred.
 				 */
-				nd6_grand_start(ifa, ND6_GRAND_FLAG_NEWGUA);
+				nd6_grand_start(ifa, ND6_QUEUE_FLAG_NEWGUA);
 			}
 
 			nd6log((LOG_DEBUG,
@@ -1720,7 +1720,7 @@ nd6_queue_timer(void *arg)
 	 * use the all-routers multicast address.
 	 * If the address is preferred, then the Override flag SHOULD NOT be set.
 	 */
-	if ((ndq->ndq_flags & ND6_GRAND_FLAG_NEWGUA) != 0) {
+	if ((ndq->ndq_flags & ND6_QUEUE_FLAG_NEWGUA) != 0) {
 		taddr6 = in6addr_linklocal_allrouters;
 		/*
 		 * XXX: If the address is in the Optimistic state,
@@ -1735,7 +1735,7 @@ nd6_queue_timer(void *arg)
 	 * use the all-nodes multicast address.
 	 * The Override flag MAY be set to either zero or one.
 	 */
-	if ((ndq->ndq_flags & ND6_GRAND_FLAG_LLADDR) != 0) {
+	if ((ndq->ndq_flags & ND6_QUEUE_FLAG_LLADDR) != 0) {
 		taddr6 = in6addr_linklocal_allnodes;
 		flags |= ND_NA_FLAG_OVERRIDE;
 	}
@@ -1773,7 +1773,7 @@ nd6_queue_add(struct ifaddr *ifa, int delay, uint32_t flags)
 		return;
 	}
 	callout_init_rw(&ndq->ndq_callout, &ndq_rwlock, CALLOUT_RETURNUNLOCKED);
-	nd6log((LOG_DEBUG, "%s: send GRAND for %s\n", if_name(ifa->ifa_ifp),
+	nd6log((LOG_DEBUG, "%s: send delayed IPv6 ND for %s\n", if_name(ifa->ifa_ifp),
 	    ip6_sprintf(ip6buf, &ia->ia_addr.sin6_addr)));
 
 	ndq->ndq_ifa = ifa;
@@ -1801,7 +1801,7 @@ nd6_grand_start(struct ifaddr *ifa, uint32_t flags)
 		return;
 
 	/* Check if new address is global */
-	if ((flags & ND6_GRAND_FLAG_NEWGUA) != 0 &&
+	if ((flags & ND6_QUEUE_FLAG_NEWGUA) != 0 &&
 	    in6_addrscope(IFA_IN6(ifa)) != IPV6_ADDR_SCOPE_GLOBAL)
 		return;
 
@@ -1831,7 +1831,7 @@ ret:
 }
 
 /*
- * drain GRAND queue. used for address removals.
+ * drain nd6 queue. used for address removals.
  */
 void
 nd6_queue_stop(struct ifaddr *ifa)

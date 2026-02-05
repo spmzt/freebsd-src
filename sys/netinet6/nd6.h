@@ -152,9 +152,9 @@ struct	in6_ndifreq {
 #define	ND6_NA_OPT_LLA		0x01
 #define	ND6_NA_CARP_MASTER	0x02
 
-/* ND6 GRAND flags */
-#define	ND6_GRAND_FLAG_NEWGUA	0x01	/* new global unicast address event */
-#define	ND6_GRAND_FLAG_LLADDR	0x02	/* link-layer address change event */
+/* ND6 queue flags */
+#define	ND6_QUEUE_FLAG_NEWGUA	0x01	/* new global unicast address event */
+#define	ND6_QUEUE_FLAG_LLADDR	0x02	/* link-layer address change event */
 
 /* protocol constants */
 #define MAX_RTR_SOLICITATION_DELAY	1	/* 1sec */
