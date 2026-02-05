@@ -371,6 +371,7 @@ caddr_t nd6_ifptomac(struct ifnet *);
 void nd6_dad_init(void);
 void nd6_dad_start(struct ifaddr *, int);
 void nd6_dad_stop(struct ifaddr *);
+void nd6_queue_init(struct in6_ifextra *);
 void nd6_grand_start(struct ifaddr *, uint32_t);
 void nd6_queue_stop(struct ifaddr *);
 

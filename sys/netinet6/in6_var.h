@@ -532,6 +532,9 @@ struct in6_ifextra {
 
 	struct lltable *lltable;
 
+	/* nd6 queue for delayed ND */
+	TAILQ_HEAD(, nd6_queue)	nd6_queue;
+
 	struct epoch_context	epoch_ctx;
 };
 
