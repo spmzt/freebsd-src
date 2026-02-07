@@ -644,7 +644,8 @@ struct ip6_mtuinfo {
 #define	IPV6CTL_MAXFRAGSPERPACKET	53 /* Max fragments per packet */
 #define	IPV6CTL_MAXFRAGBUCKETSIZE	54 /* Max reassembly queues per bucket */
 #define	IPV6CTL_GRAND_COUNT	55
-#define	IPV6CTL_MAXID		56
+#define	IPV6CTL_USE_OPTIMISTIC	56
+#define	IPV6CTL_MAXID		57
 #endif /* __BSD_VISIBLE */
 
 /*

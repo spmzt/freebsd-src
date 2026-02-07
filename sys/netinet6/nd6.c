@@ -1021,7 +1021,7 @@ nd6_timer(void *arg)
 					goto addrloop;
 				}
 			}
-		} else if ((ia6->ia6_flags & IN6_IFF_TENTATIVE) != 0) {
+		} else if ((ia6->ia6_flags & IN6_IFF_NEED_DAD) != 0) {
 			/*
 			 * Schedule DAD for a tentative address.  This happens
 			 * if the interface was down or not running
@@ -1043,7 +1043,10 @@ nd6_timer(void *arg)
 			    (ifp->if_drv_flags & IFF_DRV_RUNNING) == 0 ||
 			    (ifp->if_inet6->nd_flags & ND6_IFF_IFDISABLED))){
 				ia6->ia6_flags &= ~IN6_IFF_DUPLICATED;
-				ia6->ia6_flags |= IN6_IFF_TENTATIVE;
+				if (V_ip6_use_optimistic && !V_ip6_forwarding)
+					ia6->ia6_flags |= IN6_IFF_OPTIMISTIC;
+				else
+					ia6->ia6_flags |= IN6_IFF_TENTATIVE;
 			}
 
 			/*
