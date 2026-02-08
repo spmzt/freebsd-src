@@ -3733,11 +3733,7 @@ geneve_input_inherit(struct geneve_softc *sc, struct mbuf **m0,
 		}
 		iphdr = mtodo(m, offset - sizeof(struct ip));
 
-		/*
-		 * XXX: RFC 6040 MUST be followed for IP packets encapsulated in geneve
-		 * therefore should be ECN_COMPLETE of D53516
-		 */
-		if (ip_ecn_egress(ECN_ALLOWED, &info->ecn, &iphdr->ip_tos) == 0) {
+		if (ip_ecn_egress(ECN_COMPLETE, &info->ecn, &iphdr->ip_tos) == 0) {
 			*m0 = NULL;
 			return (ENOBUFS);
 		}
@@ -3761,12 +3757,8 @@ geneve_input_inherit(struct geneve_softc *sc, struct mbuf **m0,
 		}
 		ip6hdr = mtodo(m, offset - sizeof(struct ip6_hdr));
 
-		/*
-		 * XXX: RFC 6040 MUST be followed for IP packets encapsulated in geneve
-		 * therefore should be ECN_COMPLETE of D53516
-		 */
 		itos = (ntohl(ip6hdr->ip6_flow) >> IPV6_FLOWLABEL_LEN) & 0xff;
-		if (ip_ecn_egress(ECN_ALLOWED, &info->ecn, &itos) == 0) {
+		if (ip_ecn_egress(ECN_COMPLETE, &info->ecn, &itos) == 0) {
 			*m0 = NULL;
 			return (ENOBUFS);
 		}
