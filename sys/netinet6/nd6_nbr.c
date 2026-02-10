@@ -124,6 +124,7 @@ SYSCTL_INT(_net_inet6_icmp6, ICMPV6CTL_ND6_ONLINKNSRFC4861,
 struct nd_queue {
 	TAILQ_ENTRY(nd_queue) ndq_list;
 	struct ifaddr	*ndq_ifa;
+	struct in6_addr	ndq_daddr;
 	uint32_t	ndq_flags;
 	uint32_t	ndq_refcnt;
 	struct callout	ndq_callout;
@@ -361,8 +362,17 @@ nd6_ns_input(struct mbuf *m, int off, int icmp6len)
 		rflag |= ND_NA_FLAG_SOLICITED;
 	}
 
-	nd6_na_output_fib(ifp, &saddr6, &taddr6, rflag, tlladdr,
-	    proxy ? (struct sockaddr *)&proxydl : NULL, M_GETFIB(m));
+	/*
+	 * RFC 4861, anycast or proxy NA sent in response to a NS SHOULD
+	 * be delayed by a random time between 0 and MAX_ANYCAST_DELAY_TIME
+	 * to reduce the probability of network congestion.
+	 */
+	if (anycast == 0 && proxy == 0)
+		nd6_na_output_fib(ifp, &saddr6, &taddr6, rflag, tlladdr,
+		    proxy ? (struct sockaddr *)&proxydl : NULL, M_GETFIB(m));
+	else
+		nd6_delayed_na_start(ifa, &saddr6, arc4random() %
+		    (MAX_ANYCAST_DELAY_TIME * hz), ND6_QUEUE_FLAG_ANYCAST);
  freeit:
 	if (ifa != NULL)
 		ifa_free(ifa);
@@ -659,10 +669,6 @@ nd6_ns_output(struct ifnet *ifp, const struct in6_addr *saddr6,
  *
  * Based on RFC 2461
  * Based on RFC 2462 (duplicate address detection)
- *
- * the following items are not implemented yet:
- * - proxy advertisement delay rule (RFC2461 7.2.8, last paragraph, SHOULD)
- * - anycast advertisement delay rule (RFC2461 7.2.7, SHOULD)
  */
 void
 nd6_na_input(struct mbuf *m, int off, int icmp6len)
@@ -976,10 +982,6 @@ nd6_na_input(struct mbuf *m, int off, int icmp6len)
  * Neighbor advertisement output handling.
  *
  * Based on RFC 2461
- *
- * the following items are not implemented yet:
- * - proxy advertisement delay rule (RFC2461 7.2.8, last paragraph, SHOULD)
- * - anycast advertisement delay rule (RFC2461 7.2.7, SHOULD)
  *
  * tlladdr:
  * - 0x01 if include target link-layer address
@@ -1705,7 +1707,6 @@ nd6_queue_timer(void *arg)
 	struct ifaddr *ifa = ndq->ndq_ifa;
 	struct ifnet *ifp = ifa->ifa_ifp;
 	struct in6_ifextra *ext = ifp->if_inet6;
-	struct in6_addr taddr6 = IN6ADDR_ANY_INIT;
 	struct epoch_tracker et;
 	int delay, tlladdr;
 	u_long flags;
@@ -1721,12 +1722,10 @@ nd6_queue_timer(void *arg)
 		flags &= ~ND_NA_FLAG_ROUTER;
 
 	/*
-	 * RFC 9131 Section 6.1.2: if new global address added,
-	 * use the all-routers multicast address.
-	 * If the address is preferred, then the Override flag SHOULD NOT be set.
+	 * RFC 9131 Section 6.1.2: If the address is preferred,
+	 * then the Override flag SHOULD NOT be set.
 	 */
 	if ((ndq->ndq_flags & ND6_QUEUE_FLAG_NEWGUA) != 0) {
-		taddr6 = in6addr_linklocal_allrouters;
 		/*
 		 * XXX: If the address is in the Optimistic state,
 		 * then the Override flag MUST NOT be set.
@@ -1737,31 +1736,32 @@ nd6_queue_timer(void *arg)
 	}
 	/*
 	 * RFC 4891 Section 7.2.6: if link-layer address changed,
-	 * use the all-nodes multicast address.
 	 * The Override flag MAY be set to either zero or one.
 	 */
-	if ((ndq->ndq_flags & ND6_QUEUE_FLAG_LLADDR) != 0) {
-		taddr6 = in6addr_linklocal_allnodes;
+	if ((ndq->ndq_flags & ND6_QUEUE_FLAG_LLADDR) != 0)
 		flags |= ND_NA_FLAG_OVERRIDE;
-	}
+	/* anycast advertisement delay rule (RFC 4891 7.2.7, SHOULD) */
+	if ((ndq->ndq_flags & ND6_QUEUE_FLAG_ANYCAST) != 0)
+		flags |= ND_NA_FLAG_SOLICITED;
 
 	/* Wait at least a RetransTimer before removing from queue */
 	delay = ext->nd_retrans * hz / 1000;
 	callout_reset(&ndq->ndq_callout, delay, nd6_queue_rel, ndq);
 	IF_ADDR_WUNLOCK(ifp);
 
-	if (in6_setscope(&taddr6, ifp, NULL) != 0)
+	if (in6_setscope(&ndq->ndq_daddr, ifp, NULL) != 0)
 		goto bad;
 
-	nd6_na_output_fib(ifp, &taddr6, IFA_IN6(ifa), flags, tlladdr, NULL, ifp->if_fib);
-
+	nd6_na_output_fib(ifp, &ndq->ndq_daddr, IFA_IN6(ifa), flags, tlladdr,
+	    NULL, ifp->if_fib);
 bad:
 	NET_EPOCH_EXIT(et);
 	CURVNET_RESTORE();
 }
 
 static void
-nd6_queue_add(struct ifaddr *ifa, int delay, uint32_t flags)
+nd6_queue_add(struct ifaddr *ifa, struct in6_addr *daddr,
+    int delay, uint32_t flags)
 {
 	struct nd_queue *ndq;
 	struct ifnet *ifp = ifa->ifa_ifp;
@@ -1787,6 +1787,7 @@ nd6_queue_add(struct ifaddr *ifa, int delay, uint32_t flags)
 
 	ndq->ndq_ifa = ifa;
 	ifa_ref(ndq->ndq_ifa);
+	memcpy(&ndq->ndq_daddr, daddr, sizeof(struct in6_addr));
 	ndq->ndq_flags = flags;
 
 	refcount_init(&ndq->ndq_refcnt, 1);
@@ -1804,6 +1805,7 @@ nd6_grand_start(struct ifaddr *ifa, uint32_t flags)
 {
 	struct nd_queue *ndq;
 	struct in6_ifextra *ext = ifa->ifa_ifp->if_inet6;
+	struct in6_addr daddr = IN6ADDR_ANY_INIT;
 	int delay, count = 0;
 
 	NET_EPOCH_ASSERT();
@@ -1833,8 +1835,22 @@ nd6_grand_start(struct ifaddr *ifa, uint32_t flags)
 			return;
 	}
 
+	/*
+	 * RFC 9131 Section 6.1.2: if new global address added,
+	 * use the all-routers multicast address.
+	 */
+	if ((flags & ND6_QUEUE_FLAG_NEWGUA) != 0)
+		daddr = in6addr_linklocal_allrouters;
+
+	/*
+	 * RFC 4891 Section 7.2.6: if link-layer address changed,
+	 * use the all-nodes multicast address.
+	 */
+	if ((flags & ND6_QUEUE_FLAG_LLADDR) != 0)
+		daddr = in6addr_linklocal_allnodes;
+
 	delay = ext->nd_retrans * hz / 1000;
-	nd6_queue_add(ifa, count * delay, flags);
+	nd6_queue_add(ifa, &daddr, count * delay, flags);
 }
 
 /*
@@ -1851,4 +1867,17 @@ nd6_queue_stop(struct ifaddr *ifa)
 		return;
 
 	callout_drain(&ndq->ndq_callout);
+}
+
+/*
+ * Send delayed NA for specified address.
+ * Called by nd6_ns_input for anycast or proxy NA
+ */
+void
+nd6_delayed_na_start(struct ifaddr *ifa, struct in6_addr *daddr,
+    u_int delay, uint32_t flags)
+{
+
+	NET_EPOCH_ASSERT();
+	nd6_queue_add(ifa, daddr, delay, flags);
 }
