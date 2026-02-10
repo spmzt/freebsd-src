@@ -478,7 +478,9 @@ struct	in6_rrenumreq {
 #define IN6_IFF_AUTOCONF	0x40	/* autoconfigurable address. */
 #define IN6_IFF_TEMPORARY	0x80	/* temporary (anonymous) address. */
 #define	IN6_IFF_PREFER_SOURCE	0x0100	/* preferred address for SAS */
+#define	IN6_IFF_OPTIMISTIC	0x0200	/* optimistic address */
 
+#define	IN6_IFF_NEED_DAD	(IN6_IFF_TENTATIVE|IN6_IFF_OPTIMISTIC)
 /* do not input/output */
 #define IN6_IFF_NOTREADY (IN6_IFF_TENTATIVE|IN6_IFF_DUPLICATED)
 
