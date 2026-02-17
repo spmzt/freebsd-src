@@ -51,43 +51,19 @@
 #include <errno.h>
 
 #include "ifconfig.h"
+
+#ifndef WITHOUT_NETLINK
 #include "ifconfig_netlink.h"
+#else
+#include <net/route.h>
 
-struct nl_parsed_geneve {
-	/* essential */
-	uint32_t			ifla_vni;
-	uint16_t			ifla_proto;
-	struct sockaddr			*ifla_local;
-	struct sockaddr			*ifla_remote;
-	uint16_t			ifla_local_port;
-	uint16_t			ifla_remote_port;
-
-	/* optional */
-	struct ifla_geneve_port_range	*ifla_port_range;
-	enum ifla_geneve_df		ifla_df;
-	uint8_t				ifla_ttl;
-	bool				ifla_ttl_inherit;
-	bool				ifla_dscp_inherit;
-	bool				ifla_external;
-
-	/* l2 specific */
-	bool				ifla_ftable_learn;
-	bool				ifla_ftable_flush;
-	uint32_t			ifla_ftable_max;
-	uint32_t			ifla_ftable_timeout;
-	uint32_t			ifla_ftable_count;
-	uint32_t			ifla_ftable_nospace;
-	uint32_t			ifla_ftable_lock_upgrade_failed;
-
-	/* multicast specific */
-	char				*ifla_mc_ifname;
-	uint32_t			ifla_mc_ifindex;
-
-	/* csum info */
-	uint64_t			ifla_stats_txcsum;
-	uint64_t			ifla_stats_tso;
-	uint64_t			ifla_stats_rxcsum;
+enum ifla_geneve_df {
+	IFLA_GENEVE_DF_UNSET,
+	IFLA_GENEVE_DF_SET,
+	IFLA_GENEVE_DF_INHERIT,
+	__IFLA_GENEVE_DF_MAX,
 };
+#endif
 
 static struct geneve_params gnvp = {
 	.ifla_proto		=	GENEVE_PROTO_ETHER,
@@ -184,6 +160,43 @@ setgeneve_mode_clone(if_ctx *ctx __unused, const char *arg, int dummy __unused)
 
 	gnvp.ifla_proto = val;
 }
+
+#ifndef WITHOUT_NETLINK
+struct nl_parsed_geneve {
+	/* essential */
+	uint32_t			ifla_vni;
+	uint16_t			ifla_proto;
+	struct sockaddr			*ifla_local;
+	struct sockaddr			*ifla_remote;
+	uint16_t			ifla_local_port;
+	uint16_t			ifla_remote_port;
+
+	/* optional */
+	struct ifla_geneve_port_range	*ifla_port_range;
+	enum ifla_geneve_df		ifla_df;
+	uint8_t				ifla_ttl;
+	bool				ifla_ttl_inherit;
+	bool				ifla_dscp_inherit;
+	bool				ifla_external;
+
+	/* l2 specific */
+	bool				ifla_ftable_learn;
+	bool				ifla_ftable_flush;
+	uint32_t			ifla_ftable_max;
+	uint32_t			ifla_ftable_timeout;
+	uint32_t			ifla_ftable_count;	/* read-only */
+	uint32_t			ifla_ftable_nospace;	/* read-only */
+	uint32_t			ifla_ftable_lock_upgrade_failed;
+
+	/* multicast specific */
+	char				*ifla_mc_ifname;
+	uint32_t			ifla_mc_ifindex;	/* read-only */
+
+	/* csum info */
+	uint64_t			ifla_stats_txcsum;
+	uint64_t			ifla_stats_tso;
+	uint64_t			ifla_stats_rxcsum;
+};
 
 struct nla_geneve_info {
 	const char		*kind;
@@ -870,10 +883,670 @@ static struct cmd geneve_cmds[] = {
 	    setifcapnv),
 };
 
+#else
+
+static int
+geneve_set_ioctl(if_ctx *ctx, nvlist_t **nvl)
+{
+	void *data;
+	size_t nvlen;
+	struct ifreq ifr = {};
+
+	data = nvlist_pack(*nvl, &nvlen);
+
+	ifr.ifr_cap_nv.buffer = malloc(IFR_CAP_NV_MAXBUFSIZE);
+	ifr.ifr_cap_nv.buf_length = IFR_CAP_NV_MAXBUFSIZE;
+	memcpy(ifr.ifr_cap_nv.buffer, data, nvlen);
+	ifr.ifr_cap_nv.length = nvlen;
+
+	free(data);
+	nvlist_destroy(*nvl);
+
+	if (ioctl_ctx_ifr(ctx, SIOCSDRVSPEC, &ifr) != 0) {
+		free(ifr.ifr_cap_nv.buffer);
+		return (-1);
+	}
+
+	return (0);
+}
+
+static int
+geneve_get_ioctl(if_ctx *ctx, nvlist_t **nvl)
+{
+	struct ifreq ifr = {};
+
+	ifr.ifr_cap_nv.buffer = malloc(IFR_CAP_NV_MAXBUFSIZE);
+	ifr.ifr_cap_nv.buf_length = IFR_CAP_NV_MAXBUFSIZE;
+
+	if (ioctl_ctx_ifr(ctx, SIOCGDRVSPEC, &ifr) != 0) {
+		free(ifr.ifr_cap_nv.buffer);
+		return (-1);
+	}
+
+	*nvl = nvlist_unpack(ifr.ifr_cap_nv.buffer, ifr.ifr_cap_nv.length, 0);
+	if (*nvl == NULL) {
+		free(ifr.ifr_cap_nv.buffer);
+		return (EIO);
+	}
+
+	free(ifr.ifr_cap_nv.buffer);
+	return (0);
+}
+
+static int
+geneve_check_nvl(nvlist_t *nvl)
+{
+	const struct sockaddr *lsa, *rsa;
+	size_t llen, rlen;
+	int error = -1;
+
+	if (!nvlist_exists_number(nvl, "vni"))
+		return (error);
+
+	if (!nvlist_exists_binary(nvl, "local_sa"))
+		return (error);
+
+	if (!nvlist_exists_binary(nvl, "remote_sa"))
+		return (error);
+
+	if (!nvlist_exists_number(nvl, "proto"))
+		return (error);
+
+	lsa = nvlist_get_binary(nvl, "local_sa", &llen);
+	rsa = nvlist_get_binary(nvl, "remote_sa", &rlen);
+
+	if (lsa->sa_family != rsa->sa_family)
+		errx(1, "cannot mix IPv4 and IPv6 addresses");
+
+	error = 0;
+
+	return (error);
+}
+
+static void
+geneve_status(if_ctx *ctx)
+{
+	nvlist_t *nvl;
+	char src[NI_MAXHOST], dst[NI_MAXHOST];
+	char srcport[NI_MAXSERV], dstport[NI_MAXSERV];
+	struct sockaddr *lsa, *rsa;
+	size_t llen, rlen;
+	int vni, mc, proto;
+	bool ipv6 = false;
+	enum ifla_geneve_df df;
+
+	nvl = nvlist_create(0);
+
+	if (geneve_get_ioctl(ctx, &nvl) != 0)
+		return;
+
+	if (geneve_check_nvl(nvl) != 0)
+		return;
+
+	proto = nvlist_get_number(nvl, "proto");
+	printf("\tgeneve mode: ");
+	switch (proto) {
+	case GENEVE_PROTO_INHERIT:
+		printf("l3");
+		break;
+	case GENEVE_PROTO_ETHER:
+	default:
+		printf("l2");
+		break;
+	}
+
+	vni = nvlist_get_number(nvl, "vni");
+	printf("\n\tgeneve config:\n");
+	/* Just report nothing if the network identity isn't set yet. */
+	if (vni >= GENEVE_VNI_MAX) {
+		printf("\t\tvirtual network identifier (vni): not configured\n");
+		return;
+	}
+
+	lsa = nvlist_take_binary(nvl, "local_sa", &llen);
+	rsa = nvlist_take_binary(nvl, "remote_sa", &rlen);
+
+	if (getnameinfo(lsa, lsa->sa_len, src, sizeof(src),
+	    srcport, sizeof(srcport), NI_NUMERICHOST | NI_NUMERICSERV) != 0)
+		src[0] = srcport[0] = '\0';
+	if (getnameinfo(rsa, rsa->sa_len, dst, sizeof(dst),
+	    dstport, sizeof(dstport), NI_NUMERICHOST | NI_NUMERICSERV) != 0)
+		dst[0] = dstport[0] = '\0';
+	else {
+		ipv6 = rsa->sa_family == AF_INET6;
+		if (!ipv6) {
+			struct sockaddr_in *sin = satosin(rsa);
+			mc = IN_MULTICAST(ntohl(sin->sin_addr.s_addr));
+		} else {
+			struct sockaddr_in6 *sin6 = satosin6(rsa);
+			mc = IN6_IS_ADDR_MULTICAST(&sin6->sin6_addr);
+		}
+	}
+
+	printf("\t\tvirtual network identifier (vni): %d", vni);
+	if (src[0] != '\0')
+		printf("\n\t\tlocal: %s%s%s:%s", ipv6 ? "[" : "", src, ipv6 ? "]" : "",
+		    srcport);
+	if (dst[0] != '\0') {
+		printf("\n\t\t%s %s%s%s:%s", mc ? "group" : "remote", ipv6 ? "[" : "",
+		    dst, ipv6 ? "]" : "", dstport);
+		if (mc)
+			printf(", dev: %s", nvlist_get_string(nvl, "mc_ifname"));
+	}
+
+	if (ctx->args->verbose) {
+		printf("\n\t\tportrange: %u-%u",
+		    (uint16_t)nvlist_get_number(nvl, "min_port"),
+		    (uint16_t)nvlist_get_number(nvl, "max_port"));
+
+		if (nvlist_get_bool(nvl, "inherit_ttl"))
+			printf(", ttl: inherit");
+		else
+			printf(", ttl: %d", (uint8_t)nvlist_get_number(nvl, "ttl"));
+
+		if (nvlist_get_bool(nvl, "inherit_dscp"))
+			printf(", dscp: inherit");
+
+		df = nvlist_get_number(nvl, "df");
+		if (df == IFLA_GENEVE_DF_INHERIT)
+			printf(", df: inherit");
+		else if (df == IFLA_GENEVE_DF_SET)
+			printf(", df: set");
+		else if (df == IFLA_GENEVE_DF_UNSET)
+			printf(", df: unset");
+
+		if (nvlist_get_bool(nvl, "external"))
+			printf(", externally controlled");
+
+		if (proto == GENEVE_PROTO_ETHER) {
+			printf("\n\t\tftable mode: %slearning",
+			    nvlist_get_bool(nvl, "learn") ? "" : "no");
+			printf(", count: %u, max: %u, timeout: %u",
+			    (uint32_t)nvlist_get_number(nvl, "ftable_cnt"),
+			    (uint32_t)nvlist_get_number(nvl, "ftable_max"),
+			    (uint32_t)nvlist_get_number(nvl, "ftable_timeout"));
+		}
+	}
+
+	putchar('\n');
+}
+
+static void
+geneve_create(if_ctx *ctx, struct ifreq *ifr)
+{
+	ifr->ifr_data = (caddr_t) &gnvp;
+	ifcreate_ioctl(ctx, ifr);
+}
+
+static void
+setgeneve_vni(if_ctx *ctx, const char *arg, int dummy __unused)
+{
+	nvlist_t *nvl;
+	u_long val;
+
+	if (get_val(arg, &val) < 0 || val >= GENEVE_VNI_MAX)
+		errx(1, "invalid network identifier: %s", arg);
+
+	nvl = nvlist_create(0);
+	if (nvl == NULL)
+		err(1, "no memory to set vni");
+
+	nvlist_add_number(nvl, "vni", val);
+
+	if (geneve_set_ioctl(ctx, &nvl) != 0)
+		err(1, "GENEVE_CMD_SET_VNI");
+}
+
+static void
+setgeneve_local(if_ctx *ctx, const char *addr, int dummy __unused)
+{
+	nvlist_t *nvl;
+	struct addrinfo *ai;
+#if (defined INET || defined INET6)
+	struct sockaddr *sa;
+#endif
+	int error;
+
+	if ((error = getaddrinfo(addr, NULL, NULL, &ai)) != 0)
+		errx(1, "error in parsing local address string: %s",
+		    gai_strerror(error));
+
+	if (is_multicast(ai))
+		errx(1, "local address cannot be multicast");
+
+	nvl = nvlist_create(0);
+	if (nvl == NULL)
+		err(1, "no memory to set local address");
+
+#if (defined INET || defined INET6)
+	sa = ai->ai_addr;
+#endif
+
+	switch (ai->ai_family) {
+#ifdef INET
+	case AF_INET: {
+		struct sockaddr_in *sin = satosin(sa);
+
+		if (IN_MULTICAST(ntohl(sin->sin_addr.s_addr)))
+			errx(1, "local address cannot be multicast");
+
+		nvlist_add_binary(nvl, "local_sa", sin,
+		sizeof(struct sockaddr_in));
+		break;
+	}
+#endif
+#ifdef INET6
+	case AF_INET6: {
+		struct sockaddr_in6 *sin6 = satosin6(sa);
+
+		if (IN6_IS_ADDR_MULTICAST(&sin6->sin6_addr))
+			errx(1, "local address cannot be multicast");
+
+		nvlist_add_binary(nvl, "local_sa", sin6,
+		sizeof(struct sockaddr_in6));
+		break;
+	}
+#endif
+	default:
+		errx(1, "local address %s not supported", addr);
+	}
+
+	freeaddrinfo(ai);
+
+	if (geneve_set_ioctl(ctx, &nvl) != 0)
+		err(1, "GENEVE_CMD_SET_LOCAL_ADDR");
+}
+
+static void
+setgeneve_remote(if_ctx *ctx, const char *addr, int dummy __unused)
+{
+	nvlist_t *nvl;
+	struct addrinfo *ai;
+#if (defined INET || defined INET6)
+	struct sockaddr *sa;
+#endif
+	int error;
+
+	if ((error = getaddrinfo(addr, NULL, NULL, &ai)) != 0)
+		errx(1, "error in parsing remote address string: %s",
+		    gai_strerror(error));
+
+	if (is_multicast(ai))
+		errx(1, "remote address cannot be multicast");
+
+	nvl = nvlist_create(0);
+	if (nvl == NULL)
+		err(1, "no memory to set remote address");
+
+#if (defined INET || defined INET6)
+	sa = ai->ai_addr;
+#endif
+
+	switch (ai->ai_family) {
+#ifdef INET
+	case AF_INET: {
+		struct sockaddr_in *sin = satosin(sa);
+
+		if (IN_MULTICAST(ntohl(sin->sin_addr.s_addr)))
+			errx(1, "remote address cannot be multicast");
+
+		nvlist_add_binary(nvl, "remote_sa", sin,
+		sizeof(struct sockaddr_in));
+		break;
+	}
+#endif
+#ifdef INET6
+	case AF_INET6: {
+		struct sockaddr_in6 *sin6 = satosin6(sa);
+
+		if (IN6_IS_ADDR_MULTICAST(&sin6->sin6_addr))
+			errx(1, "remote address cannot be multicast");
+
+		nvlist_add_binary(nvl, "remote_sa", sin6,
+		sizeof(struct sockaddr_in6));
+		break;
+	}
+#endif
+	default:
+		errx(1, "remote address %s not supported", addr);
+	}
+
+	freeaddrinfo(ai);
+
+	if (geneve_set_ioctl(ctx, &nvl) != 0)
+		err(1, "GENEVE_CMD_SET_REMOTE_ADDR");
+}
+
+static void
+setgeneve_group(if_ctx *ctx, const char *addr, int dummy __unused)
+{
+	nvlist_t *nvl;
+	struct addrinfo *ai;
+#if (defined INET || defined INET6)
+	struct sockaddr *sa;
+#endif
+	int error;
+
+	if ((error = getaddrinfo(addr, NULL, NULL, &ai)) != 0)
+		errx(1, "error in parsing group address string: %s",
+		    gai_strerror(error));
+
+	if (!is_multicast(ai))
+		errx(1, "group address must be multicast");
+
+	nvl = nvlist_create(0);
+	if (nvl == NULL)
+		err(1, "no memory to set group");
+
+#if (defined INET || defined INET6)
+	sa = ai->ai_addr;
+#endif
+
+	switch (ai->ai_family) {
+#ifdef INET
+	case AF_INET: {
+		struct sockaddr_in *sin = satosin(sa);
+
+		if (!IN_MULTICAST(ntohl(sin->sin_addr.s_addr)))
+			errx(1, "group address must be multicast");
+
+		nvlist_add_binary(nvl, "remote_sa", sin,
+		sizeof(struct sockaddr_in));
+		break;
+	}
+#endif
+#ifdef INET6
+	case AF_INET6: {
+		struct sockaddr_in6 *sin6 = satosin6(sa);
+
+		if (!IN6_IS_ADDR_MULTICAST(&sin6->sin6_addr))
+			errx(1, "group address must be multicast");
+
+		nvlist_add_binary(nvl, "remote_sa", sin6,
+		sizeof(struct sockaddr_in6));
+		break;
+	}
+#endif
+	default:
+		errx(1, "group address %s not supported", addr);
+	}
+
+	freeaddrinfo(ai);
+
+	if (geneve_set_ioctl(ctx, &nvl) != 0)
+		err(1, "GENEVE_CMD_SET_REMOTE_ADDR");
+}
+
+static void
+setgeneve_local_port(if_ctx *ctx, const char *arg, int dummy __unused)
+{
+	nvlist_t *nvl;
+	u_long val;
+
+	if (get_val(arg, &val) < 0 || val >= UINT16_MAX)
+		errx(1, "invalid local port: %s", arg);
+
+	nvl = nvlist_create(0);
+	if (nvl == NULL)
+		err(1, "no memory to set local port");
+
+	nvlist_add_number(nvl, "local_port", val);
+
+	if (geneve_set_ioctl(ctx, &nvl) != 0)
+		err(1, "GENEVE_CMD_SET_LOCAL_PORT");
+}
+
+static void
+setgeneve_remote_port(if_ctx *ctx, const char *arg, int dummy __unused)
+{
+	nvlist_t *nvl;
+	u_long val;
+
+	if (get_val(arg, &val) < 0 || val >= UINT16_MAX)
+		errx(1, "invalid remote port: %s", arg);
+
+	nvl = nvlist_create(0);
+	if (nvl == NULL)
+		err(1, "no memory to set remote port");
+
+	nvlist_add_number(nvl, "remote_port", val);
+
+	if (geneve_set_ioctl(ctx, &nvl) != 0)
+		err(1, "GENEVE_CMD_SET_REMOTE_PORT");
+}
+
+static void
+setgeneve_port_range(if_ctx *ctx, const char *arg1, const char *arg2)
+{
+	nvlist_t *nvl;
+	u_long min, max;
+
+	if (get_val(arg1, &min) < 0 || min >= UINT16_MAX)
+		errx(1, "invalid port range minimum: %s", arg1);
+	if (get_val(arg2, &max) < 0 || max >= UINT16_MAX)
+		errx(1, "invalid port range maximum: %s", arg2);
+	if (max < min)
+		errx(1, "invalid port range");
+
+	nvl = nvlist_create(0);
+	if (nvl == NULL)
+		err(1, "no memory to set port range");
+
+	nvlist_add_number(nvl, "min_port", min);
+	nvlist_add_number(nvl, "max_port", max);
+
+	if (geneve_set_ioctl(ctx, &nvl) != 0)
+		err(1, "GENEVE_CMD_SET_PORT_RANGE");
+}
+
+static void
+setgeneve_timeout(if_ctx *ctx, const char *arg, int dummy __unused)
+{
+	nvlist_t *nvl;
+	u_long val;
+
+	if (get_val(arg, &val) < 0 || (val & ~0xFFFFFFFF) != 0)
+		errx(1, "invalid timeout value: %s", arg);
+
+	nvl = nvlist_create(0);
+	if (nvl == NULL)
+		err(1, "no memory to set timeout");
+
+	nvlist_add_number(nvl, "ftable_timeout", val & 0xFFFFFFFF);
+
+	if (geneve_set_ioctl(ctx, &nvl) != 0)
+		err(1, "GENEVE_CMD_SET_FTABLE_TIMEOUT");
+}
+
+static void
+setgeneve_maxaddr(if_ctx *ctx, const char *arg, int dummy __unused)
+{
+	nvlist_t *nvl;
+	u_long val;
+
+	if (get_val(arg, &val) < 0 || (val & ~0xFFFFFFFF) != 0)
+		errx(1, "invalid maxaddr value: %s",  arg);
+
+	nvl = nvlist_create(0);
+	if (nvl == NULL)
+		err(1, "no memory to set maxaddr");
+
+	nvlist_add_number(nvl, "ftable_max", val & 0xFFFFFFFF);
+
+	if (geneve_set_ioctl(ctx, &nvl) != 0)
+		err(1, "GENEVE_CMD_SET_FTABLE_MAX");
+}
+
+static void
+setgeneve_dev(if_ctx *ctx, const char *arg, int dummy __unused)
+{
+	nvlist_t *nvl;
+
+	nvl = nvlist_create(0);
+	if (nvl == NULL)
+		err(1, "no memory to set multicast interface");
+
+	if (strlen(arg) > IFNAMSIZ)
+		errx(1, "interface name %s is too long", arg);
+
+	nvlist_add_string(nvl, "mc_ifname", arg);
+
+	if (geneve_set_ioctl(ctx, &nvl) != 0)
+		err(1, "GENEVE_CMD_SET_MULTICAST_IF");
+}
+
+static void
+setgeneve_ttl(if_ctx *ctx, const char *arg, int dummy __unused)
+{
+	nvlist_t *nvl;
+	u_long val;
+
+	if ((get_val(arg, &val) < 0 || val > 256) == 0) {
+		nvl = nvlist_create(0);
+		if (nvl == NULL)
+			err(1, "no memory to set ttl");
+
+		nvlist_add_number(nvl, "ttl", val);
+		nvlist_add_bool(nvl, "inherit_ttl", false);
+	} else if (!strcmp(arg, "inherit")) {
+		nvl = nvlist_create(0);
+			if (nvl == NULL)
+		err(1, "no memory to set ttl");
+
+		nvlist_add_bool(nvl, "inherit_ttl", true);
+	} else
+		errx(1, "invalid TTL value: %s", arg);
+
+	if (geneve_set_ioctl(ctx, &nvl) != 0)
+		err(1, "GENEVE_CMD_SET_TTL");
+}
+
+static void
+setgeneve_df(if_ctx *ctx, const char *arg, int dummy __unused)
+{
+	nvlist_t *nvl;
+	enum ifla_geneve_df df;
+
+	if (get_df(arg, &df) < 0)
+		errx(1, "invalid df value: %s", arg);
+
+	nvl = nvlist_create(0);
+	if (nvl == NULL)
+		err(1, "no memory to set df");
+
+	nvlist_add_number(nvl, "df", df);
+
+	if (geneve_set_ioctl(ctx, &nvl) != 0)
+		err(1, "GENEVE_CMD_SET_DF");
+}
+
+static void
+setgeneve_inherit_dscp(if_ctx *ctx, const char *arg __unused, int d)
+{
+	nvlist_t *nvl;
+
+	nvl = nvlist_create(0);
+	if (nvl == NULL)
+		err(1, "no memory to set dscp inherit");
+
+	nvlist_add_bool(nvl, "inherit_dscp", d != 0);
+
+	if (geneve_set_ioctl(ctx, &nvl) != 0)
+		err(1, "GENEVE_CMD_SET_DSCP_INHERIT");
+}
+
+static void
+setgeneve_learn(if_ctx *ctx, const char *arg __unused, int d)
+{
+	nvlist_t *nvl;
+
+	nvl = nvlist_create(0);
+	if (nvl == NULL)
+		err(1, "no memory to set learn");
+
+	nvlist_add_bool(nvl, "learn", d != 0);
+
+	if (geneve_set_ioctl(ctx, &nvl) != 0)
+		err(1, "GENEVE_CMD_SET_LEARN");
+}
+
+static void
+setgeneve_flush(if_ctx *ctx, const char *val __unused, int d)
+{
+	nvlist_t *nvl;
+
+	nvl = nvlist_create(0);
+	if (nvl == NULL)
+		err(1, "no memory to flush");
+
+	nvlist_add_bool(nvl, "flush", d != 0);
+
+	if (geneve_set_ioctl(ctx, &nvl) != 0)
+		err(1, "GENEVE_CMD_FLUSH");
+}
+
+static void
+setgeneve_external(if_ctx *ctx, const char *val __unused, int d)
+{
+	nvlist_t *nvl;
+
+	nvl = nvlist_create(0);
+	if (nvl == NULL)
+		err(1, "no memory to flush");
+
+	nvlist_add_bool(nvl, "external", d != 0);
+
+	if (geneve_set_ioctl(ctx, &nvl) != 0)
+		err(1, "GENEVE_CMD_SET_EXTERNAL");
+}
+
+
+
+static struct cmd geneve_cmds[] = {
+
+	DEF_CLONE_CMD_ARG("genevemode",		setgeneve_mode_clone),
+
+	DEF_CMD_ARG("geneveid",			setgeneve_vni),
+	DEF_CMD_ARG("genevelocal",		setgeneve_local),
+	DEF_CMD_ARG("geneveremote",		setgeneve_remote),
+	DEF_CMD_ARG("genevegroup",		setgeneve_group),
+	DEF_CMD_ARG("genevelocalport",		setgeneve_local_port),
+	DEF_CMD_ARG("geneveremoteport",		setgeneve_remote_port),
+	DEF_CMD_ARG2("geneveportrange",		setgeneve_port_range),
+	DEF_CMD_ARG("genevetimeout",		setgeneve_timeout),
+	DEF_CMD_ARG("genevemaxaddr",		setgeneve_maxaddr),
+	DEF_CMD_ARG("genevedev",		setgeneve_dev),
+	DEF_CMD_ARG("genevettl",		setgeneve_ttl),
+	DEF_CMD_ARG("genevedf",			setgeneve_df),
+	DEF_CMD("genevedscpinherit", 1,		setgeneve_inherit_dscp),
+	DEF_CMD("-genevedscpinherit", 0,	setgeneve_inherit_dscp),
+	DEF_CMD("genevelearn", 1,		setgeneve_learn),
+	DEF_CMD("-genevelearn", 0,		setgeneve_learn),
+	DEF_CMD("geneveflushall", 1,		setgeneve_flush),
+	DEF_CMD("geneveflush", 0,		setgeneve_flush),
+	DEF_CMD("geneveexternal", 1,		setgeneve_external),
+	DEF_CMD("-geneveexternal", 0,		setgeneve_external),
+
+	DEF_CMD_SARG("genevehwcsum",	IFCAP2_GENEVE_HWCSUM_NAME,
+	    setifcapnv),
+	DEF_CMD_SARG("-genevehwcsum",	"-"IFCAP2_GENEVE_HWCSUM_NAME,
+	    setifcapnv),
+	DEF_CMD_SARG("genevehwtso",	IFCAP2_GENEVE_HWTSO_NAME,
+	    setifcapnv),
+	DEF_CMD_SARG("-genevehwtso",	"-"IFCAP2_GENEVE_HWTSO_NAME,
+	    setifcapnv),
+};
+
+#endif
+
 static struct afswtch af_geneve = {
 	.af_name		= "af_geneve",
 	.af_af			= AF_UNSPEC,
+#ifndef WITHOUT_NETLINK
 	.af_other_status	= geneve_status_nl,
+#else
+	.af_other_status	= geneve_status,
+#endif
 };
 
 static __constructor void
@@ -884,6 +1557,10 @@ geneve_ctor(void)
 	for (i = 0; i < nitems(geneve_cmds); i++)
 		cmd_register(&geneve_cmds[i]);
 	af_register(&af_geneve);
+#ifndef WITHOUT_NETLINK
 	clone_setdefcallback_prefix("geneve", geneve_create_nl);
 	SNL_VERIFY_PARSERS(all_parsers);
+#else
+	clone_setdefcallback_prefix("geneve", geneve_create);
+#endif
 }
