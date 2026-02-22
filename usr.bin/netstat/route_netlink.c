@@ -218,8 +218,8 @@ p_path(struct snl_parsed_route *rt, bool is_mpath)
 	else
 		xo_emit("{t:interface-name/%*.*s}", wid.iface, wid.iface,
 		    prettyname);
-	if (rt->rta_expires > 0) {
-		xo_emit(" {:expire-time/%*u}", wid.expire, rt->rta_expires);
+	if (rt->rta_expire > 0) {
+		xo_emit(" {:expire-time/%*u}", wid.expire, rt->rta_expire);
 	}
 }
 
