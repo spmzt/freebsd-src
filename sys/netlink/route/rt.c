@@ -487,6 +487,7 @@ struct nl_parsed_route {
 	uint32_t		rta_rtflags;
 	uint32_t		rta_nh_id;
 	uint32_t		rta_weight;
+	uint32_t		rta_expire;
 	uint32_t		rtax_mtu;
 	uint8_t			rtm_table;
 	uint8_t			rtm_family;
@@ -513,6 +514,7 @@ static const struct nlattr_parser nla_p_rtmsg[] = {
 	{ .type = NL_RTA_RTFLAGS, .off = _OUT(rta_rtflags), .cb = nlattr_get_uint32 },
 	{ .type = NL_RTA_TABLE, .off = _OUT(rta_table), .cb = nlattr_get_uint32 },
 	{ .type = NL_RTA_VIA, .off = _OUT(rta_gw), .cb = nlattr_get_ipvia },
+	{ .type = NL_RTA_EXPIRES, .off = _OUT(rta_expire), .cb = nlattr_get_uint32 },
 	{ .type = NL_RTA_NH_ID, .off = _OUT(rta_nh_id), .cb = nlattr_get_uint32 },
 };
 
@@ -851,6 +853,7 @@ create_nexthop_from_attrs(struct nl_parsed_route *attrs,
 {
 	struct nhop_object *nh = NULL;
 	int error = 0;
+	uint32_t nh_expire = 0;
 
 	if (attrs->rta_multipath != NULL) {
 #ifdef ROUTE_MPATH
@@ -907,6 +910,10 @@ create_nexthop_from_attrs(struct nl_parsed_route *attrs,
 			nhop_set_transmit_ifp(nh, attrs->rta_oif);
 		if (attrs->rtax_mtu != 0)
 			nhop_set_mtu(nh, attrs->rtax_mtu, true);
+		if (attrs->rta_expire > 0) {
+			nh_expire = attrs->rta_expire - time_second + time_uptime;
+			nhop_set_expire(nh, nh_expire);
+		}
 		if (attrs->rta_rtflags & RTF_BROADCAST)
 			nhop_set_broadcast(nh, true);
 		if (attrs->rtm_protocol > RTPROT_STATIC)
