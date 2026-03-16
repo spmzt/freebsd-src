@@ -816,7 +816,7 @@ if_attach_internal(struct ifnet *ifp, bool vmove)
 
 	MPASS(ifindex_table[ifp->if_index].ife_ifnet == ifp);
 
-	printf("%s: enter for %s\n", __func__, ifp->if_xname);
+	if_printf(ifp, "enter for %s\n", __func__);
 
 #ifdef VIMAGE
 	CURVNET_ASSERT_SET();
@@ -2054,19 +2054,18 @@ do_link_state_change(void *arg, int pending)
 
 		mask = (ifp->if_hwassist & IF_OFFLOAD_EXPECTED) ^ IF_OFFLOAD_EXPECTED;
 		if (mask == 0) {
-			printf("%s: interface does support all expected offload capabilities.\n",
-			    __func__);
+			if_printf(ifp,
+			    "interface does support all expected offload capabilities.\n");
 			if (ifp->if_transmit == if_offload_transmit) {
-				printf("%s: Change if_transmit back to original if_transmit.\n",
-				    __func__);
+				if_printf(ifp, "Change if_transmit back to original if_transmit.\n");
 				ifp->if_transmit = ifp->if_transmit_org;
 			}
 		} else {
-			printf("%s: Interface does not support all expected offload capabilities. It does not support: %b\n",
-			    __func__, (uint32_t)mask, CSUM_BITS);
+			if_printf(ifp,
+			    "Interface does not support all expected offload capabilities. It does not support: %b\n",
+			    (uint32_t)mask, CSUM_BITS);
 			if (ifp->if_transmit != if_offload_transmit) {
-				printf("%s: Change if_transmit to if_offload_transmit.\n",
-				    __func__);
+				if_printf(ifp, "Change if_transmit to if_offload_transmit.\n");
 				ifp->if_transmit_org = ifp->if_transmit;
 				ifp->if_transmit = if_offload_transmit;
 			}
@@ -2103,7 +2102,8 @@ if_down(struct ifnet *ifp)
 void
 if_up(struct ifnet *ifp)
 {
-	printf("%s: up for %s\n", __func__, ifp->if_xname);
+
+	if_printf(ifp, "notify the interface is up\n");
 	ifp->if_flags |= IFF_UP;
 	getmicrotime(&ifp->if_lastchange);
 	if (ifp->if_carp)

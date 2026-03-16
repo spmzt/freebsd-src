@@ -49,6 +49,19 @@
 #include <netinet/ip_carp.h>
 #include <netinet/sctp_crc32.h>
 #include <netinet/tcp.h>
+#include <netinet/udp.h>
+
+#ifdef INET
+#include <net/debugnet.h>
+#include <netinet/if_ether.h>
+#include <machine/in_cksum.h>
+#include <netinet/ip_var.h>
+#endif /* INET */
+#ifdef INET6
+#include <netinet6/in6_var.h>
+#include <netinet6/ip6_var.h>
+#include <netinet/ip6.h>
+#endif /* INET6 */
 
 #define IF_OFFLOAD_DEBUG 0
 
@@ -59,11 +72,6 @@
 #endif /* IF_OFFLOAD_DEBUG */
 
 #ifdef INET
-#include <net/debugnet.h>
-#include <netinet/if_ether.h>
-#include <machine/in_cksum.h>
-#include <netinet/ip_var.h>
-
 static int
 if_offload_csum_ipv4(struct mbuf **mp, bool csum_ipv4, bool csum_pseudo, uint16_t *csum_start, uint16_t l4csum_field_offset)
 {
@@ -74,9 +82,9 @@ if_offload_csum_ipv4(struct mbuf **mp, bool csum_ipv4, bool csum_pseudo, uint16_
 	m = *mp;
 	/* pullup the IP header. */
 	m = m_pullup(m, *csum_start + sizeof(struct ip));
-	if (m == NULL) {
+	if (m == NULL)
 		return (0);
-	}
+
 	ip = (struct ip *)mtodo(m, *csum_start);
 	ip_hdr_length = (ip->ip_hl << 2);
 	if (csum_ipv4) { /* IPv4 Header Checksum */
@@ -104,13 +112,13 @@ if_offload_csum_ipv4(struct mbuf **mp, bool csum_ipv4, bool csum_pseudo, uint16_
 	*mp = m;
 	return (1);
 }
-
 #endif /* INET */
-#ifdef INET6
-#include <netinet6/in6_var.h>
-#include <netinet6/ip6_var.h>
-#include <netinet/ip6.h>
 
+#ifdef INET6
+/*
+ * Compute TCP/UDP pseudo header checksum and insert that value in the
+ * TCP/UDP checksum field.
+ */
 static int
 if_offload_csum_ipv6(struct mbuf **mp, bool csum_pseudo, uint16_t *csum_start, uint16_t l4csum_field_offset)
 {
@@ -118,11 +126,6 @@ if_offload_csum_ipv6(struct mbuf **mp, bool csum_pseudo, uint16_t *csum_start, u
 	struct mbuf *m;
 	int protocol;
 	uint16_t l4offset;
-
-	/*
-	 * Compute TCP/UDP pseudo header checksum and insert that value in the
-	 * TCP/UDP checksum field.
-	 */
 
 	m = *mp;
 	/* pullup the IPv6 fixed header. */
@@ -153,7 +156,6 @@ if_offload_csum_ipv6(struct mbuf **mp, bool csum_pseudo, uint16_t *csum_start, u
 	*mp = m;
 	return (1);
 }
-
 #endif /* INET6 */
 
 static void
@@ -333,38 +335,37 @@ if_offload_tso(struct ifnet *ifp, struct mbuf *m, uint16_t l3offset, uint16_t l4
 	tcp = (struct tcphdr *)mtodo(m, l4offset);
 	l4payload_offset = l4offset + (tcp->th_off << 2);
 
-	/*
-	if (m0->m_pkthdr.csum_flags & ifp->if_hwassist & CSUM_TSO) {/ TSO with GSO /
+#if 0
+	/* TSO with GSO */
+	if (m0->m_pkthdr.csum_flags & ifp->if_hwassist & CSUM_TSO)
 		mss = ifp->if_hw_tsomax - state->ip_hlen - state->tcp_hlen;
-	} else {
+	else
 		mss = m0->m_pkthdr.tso_segsz;
-	}
-	*/
+#endif
 	mss = m->m_pkthdr.tso_segsz;
-	
-	/*
-	The headers for the small packets are mostly copied from the big packet
-	with adjustments made to certain packet header fields on a per packet
-	basis. The IPv4 total length field or IPv6 payload length field is
-	updated to match the shorter payload. Hop-by-Hop Options and Destination
-	Options extension headers, are copied as is (other extension headers,
-	including AH, ESP, and Fragmentation, aren’t compatible with
-	segmentation offload).
 
-	The TCP header, including options, is copied to each small packet with
-	some adjustments. The sequence number in each small packet is set to the
-	sequence number of the previous packet plus segment size (the sequence
-	number in the first packet is set to sequence number in the big packet
-	being split up). The FIN, PSH flags are only reflected in the last
-	segment, and CWR is only reflected in the first segment. The TCP
-	checksum is computed for each packet with a simple adaptation of
-	checksum offload.
-	*/
+	/*
+	 * The headers for the small packets are mostly copied from the big packet
+	 * with adjustments made to certain packet header fields on a per packet
+	 * basis. The IPv4 total length field or IPv6 payload length field is
+	 * updated to match the shorter payload. Hop-by-Hop Options and Destination
+	 * Options extension headers, are copied as is (other extension headers,
+	 * including AH, ESP, and Fragmentation, aren’t compatible with
+	 * segmentation offload).
+	 * The TCP header, including options, is copied to each small packet with
+	 * some adjustments. The sequence number in each small packet is set to the
+	 * sequence number of the previous packet plus segment size (the sequence
+	 * number in the first packet is set to sequence number in the big packet
+	 * being split up). The FIN, PSH flags are only reflected in the last
+	 * segment, and CWR is only reflected in the first segment. The TCP
+	 * checksum is computed for each packet with a simple adaptation of
+	 * checksum offload.
+	 */
 
 	seq_number = ntohl(tcp->th_seq);
 
 	IF_OFFLOAD_LOG(("%s: Do TSO with l3offset=%d, l4offset=%d, csum_tcp=%d, l4csum_field_offset=%d, l4payload_offset=%d, mss=%d\n", __func__, l3offset, l4offset, csum_tcp, l4csum_field_offset, l4payload_offset, mss));
-	/* TODO: Instead of a complete list, create only the next segment? */
+	/* XXX: Instead of a complete list, create only the next segment? */
 	m0 = m_seg(m, l4payload_offset, mss);
 	if (m0 == NULL) {
 		return (ENOBUFS);
@@ -378,7 +379,7 @@ if_offload_tso(struct ifnet *ifp, struct mbuf *m, uint16_t l3offset, uint16_t l4
 
 		/* Update TCP header fields */
 		if (mi != m0) { /* not first one */
-			/* 
+			/*
 			 * Clear CWR flag and set sequence number in all but
 			 * the first segment
 			 */
@@ -386,7 +387,7 @@ if_offload_tso(struct ifnet *ifp, struct mbuf *m, uint16_t l3offset, uint16_t l4
 			tcp->th_seq = htonl(seq_number);
 		}
 		if (mi->m_nextpkt != NULL) { /* not last one */
-			/* 
+			/*
 			 * Clear FIN and PUSH flags in all but the last
 			 * segment.
 			 */
@@ -403,7 +404,7 @@ if_offload_tso(struct ifnet *ifp, struct mbuf *m, uint16_t l3offset, uint16_t l4
 		}
 
 		if ((error = ((ifp->if_transmit_org)(ifp, mi)))) {
-			printf("%s: if_transmit error %d\n", __func__, error);
+			if_printf(ifp, "if_transmit error %d\n", error);
 			/*
 			 * XXX: If a segment can not be sent, discard the following
 			 * segments and propagate the erorr to the upper levels.
@@ -422,7 +423,6 @@ if_offload_tso(struct ifnet *ifp, struct mbuf *m, uint16_t l3offset, uint16_t l4
 	return (0);
 }
 
-
 static uint16_t
 if_offload_csum_start(struct mbuf **mp, bool l4header, bool ipv6)
 {
@@ -433,18 +433,18 @@ if_offload_csum_start(struct mbuf **mp, bool l4header, bool ipv6)
 	m = *mp;
 	csum_start = ETHER_HDR_LEN;
 	m = m_pullup(m, csum_start);
-	if (m == NULL) {
-		return 0;
-	}
+	if (m == NULL)
+		return (0);
+
 	eh = mtod(m, struct ether_header *);
 	ether_type = ntohs(eh->ether_type);
 	while (ether_type == ETHERTYPE_VLAN || ether_type == ETHERTYPE_QINQ) {
 		csum_start += ETHER_VLAN_ENCAP_LEN;
 		/* determine inner ether type */
 		m = m_pullup(m, csum_start);
-		if (m == NULL) {
-			return 0;
-		}
+		if (m == NULL)
+			return (0);
+
 		eh = mtod(m, struct ether_header *);
 		ether_type = ntohs(*(&(eh->ether_type) + ((csum_start - ETHER_HDR_LEN) >> 2)));
 	}
@@ -454,11 +454,11 @@ if_offload_csum_start(struct mbuf **mp, bool l4header, bool ipv6)
 			csum_start = ip6_lasthdr(m, csum_start, IPPROTO_IPV6, NULL);
 		} else {
 			struct ip *ip;
-	
+
 			m = m_pullup(m, csum_start + sizeof(struct ip));
-			if (m == NULL) {
+			if (m == NULL)
 				return (0);
-			}
+
 			ip = mtod(m, struct ip *);
 			csum_start += ip->ip_hl << 2;
 		}
@@ -468,12 +468,14 @@ if_offload_csum_start(struct mbuf **mp, bool l4header, bool ipv6)
 	return (csum_start);
 }
 
-#include <netinet/udp.h>
 
 static uint16_t
 if_offload_l4csum_field_offset(struct mbuf *m)
 {
-	if ((m->m_pkthdr.csum_flags & (CSUM_IP_TCP | CSUM_IP6_TCP | CSUM_IP_TSO | CSUM_IP6_TSO)) != 0) /* TODO: TSO without CSUM_IP_TCP??? */
+
+	/* XXX: TSO without CSUM_IP_TCP??? */
+	if ((m->m_pkthdr.csum_flags & (CSUM_IP_TCP | CSUM_IP6_TCP |
+	    CSUM_IP_TSO | CSUM_IP6_TSO)) != 0)
 		return (offsetof(struct tcphdr, th_sum));
 	else if ((m->m_pkthdr.csum_flags & (CSUM_IP_UDP | CSUM_IP6_UDP)) != 0)
 		return (offsetof(struct udphdr, uh_sum));
@@ -482,8 +484,10 @@ if_offload_l4csum_field_offset(struct mbuf *m)
 }
 
 static void
-if_offload_values(uint32_t csum_req, bool *ipv6, bool *tso, bool *csum_ipv4, bool *csum_pseudo, uint8_t *csum_sctptcpudp)
+if_offload_values(uint32_t csum_req, bool *ipv6, bool *tso, bool *csum_ipv4,
+    bool *csum_pseudo, uint8_t *csum_sctptcpudp)
 {
+
 	*ipv6 = ((csum_req & IF_OFFLOAD_EXPECTED6) != 0);
 	*tso = ((csum_req & (CSUM_IP_TSO | CSUM_IP6_TSO)) != 0);
 	*csum_ipv4 = ((csum_req & CSUM_IP) != 0);
@@ -520,10 +524,9 @@ if_offload_transmit(struct ifnet *ifp, struct mbuf *m)
 	if_offload_values(csum_req, &ipv6, &tso, &csum_ipv4, &csum_pseudo, &csum_sctptcpudp);
 	csum_start = if_offload_csum_start(&m, (!(csum_ipv4 || csum_pseudo || tso)), ipv6);
 	l4csum_field_offset = if_offload_l4csum_field_offset(m);
-	if (csum_start == 0) {
-		return 0;
-	}
-	
+	if (csum_start == 0)
+		return (0);
+
 	/* If TSO is requested and ifp supports TSO, check whether the packet
 	 * correctly respects
 	 * - maximum burst limit (if_hw_tsomax),
@@ -531,11 +534,11 @@ if_offload_transmit(struct ifnet *ifp, struct mbuf *m)
 	 * - maximum segment size (if_hw_tsomaxsegsize)
 	 * of ifp.
 	 */
-	/*
+#if 0
 	if (!offload_tso && (csum_req & (CSUM_IP_TSO | CSUM_IP6_TSO)) != 0 &&
 	    (ifp->if_hw_tsomax < m->m_pkthdr.tso_segsz ||
 	     if_hw_tsomaxsegcount
-	*/
+#endif
 
 	/*
 	 * Check IP first. Compute and insert IPv4 header checksum or TCP/UDP
@@ -549,8 +552,8 @@ if_offload_transmit(struct ifnet *ifp, struct mbuf *m)
 			if_offload_csum_ipv6(&m, csum_pseudo, &csum_start, l4csum_field_offset);
 			if (tso) {
 				l4offset = csum_start;
-				return if_offload_tso(ifp, m, l3offset, l4offset,
-				    if_offload_tso_update_ipv6, (csum_sctptcpudp == 1), l4csum_field_offset);
+				return (if_offload_tso(ifp, m, l3offset, l4offset,
+				    if_offload_tso_update_ipv6, (csum_sctptcpudp == 1), l4csum_field_offset));
 			}
 		}
 	}
@@ -564,8 +567,8 @@ if_offload_transmit(struct ifnet *ifp, struct mbuf *m)
 			if_offload_csum_ipv4(&m, csum_ipv4, csum_pseudo, &csum_start, l4csum_field_offset);
 			if (tso) {
 				l4offset = csum_start;
-				return if_offload_tso(ifp, m, l3offset, l4offset,
-				    if_offload_tso_update_ipv4, (csum_sctptcpudp == 1), l4csum_field_offset);
+				return (if_offload_tso(ifp, m, l3offset, l4offset,
+				    if_offload_tso_update_ipv4, (csum_sctptcpudp == 1), l4csum_field_offset));
 			}
 		}
 #endif /* INET */
