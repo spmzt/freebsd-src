@@ -663,7 +663,7 @@ m_epg_pagelen(const struct mbuf *m, int pidx, int pgoff)
 #define	CSUM_IP_TCP		0x00000004	/* TCP checksum offload */
 #define	CSUM_IP_SCTP		0x00000008	/* SCTP checksum offload */
 #define	CSUM_IP_TSO		0x00000010	/* TCP segmentation offload */
-#define	CSUM_IP_ISCSI		0x00000020	/* iSCSI checksum offload */
+#define	CSUM_IP_PSEUDO		0x00000020	/* TCP/UDP pseudo header checksum offload */
 
 #define	CSUM_INNER_IP6_UDP	0x00000040
 #define	CSUM_INNER_IP6_TCP	0x00000080
@@ -672,7 +672,7 @@ m_epg_pagelen(const struct mbuf *m, int pidx, int pgoff)
 #define	CSUM_IP6_TCP		0x00000400	/* TCP checksum offload */
 #define	CSUM_IP6_SCTP		0x00000800	/* SCTP checksum offload */
 #define	CSUM_IP6_TSO		0x00001000	/* TCP segmentation offload */
-#define	CSUM_IP6_ISCSI		0x00002000	/* iSCSI checksum offload */
+#define	CSUM_IP6_PSEUDO		0x00002000	/* TCP/UDP pseudo header checksum offload */
 
 #define	CSUM_INNER_IP		0x00004000
 #define	CSUM_INNER_IP_UDP	0x00008000
@@ -714,9 +714,9 @@ m_epg_pagelen(const struct mbuf *m, int pidx, int pgoff)
  */
 #define	CSUM_BITS \
     "\20\1CSUM_IP\2CSUM_IP_UDP\3CSUM_IP_TCP\4CSUM_IP_SCTP\5CSUM_IP_TSO" \
-    "\6CSUM_IP_ISCSI\7CSUM_INNER_IP6_UDP\10CSUM_INNER_IP6_TCP" \
+    "\6CSUM_IP_PSEUDO\7CSUM_INNER_IP6_UDP\10CSUM_INNER_IP6_TCP" \
     "\11CSUM_INNER_IP6_TSO\12CSUM_IP6_UDP\13CSUM_IP6_TCP\14CSUM_IP6_SCTP" \
-    "\15CSUM_IP6_TSO\16CSUM_IP6_ISCSI\17CSUM_INNER_IP\20CSUM_INNER_IP_UDP" \
+    "\15CSUM_IP6_TSO\16CSUM_IP6_PSEUDO\17CSUM_INNER_IP\20CSUM_INNER_IP_UDP" \
     "\21CSUM_INNER_IP_TCP\22CSUM_INNER_IP_TSO\23CSUM_ENCAP_VXLAN" \
     "\24CSUM_ENCAP_RSVD1\25CSUM_INNER_L3_CALC\26CSUM_INNER_L3_VALID" \
     "\27CSUM_INNER_L4_CALC\30CSUM_INNER_L4_VALID\31CSUM_L3_CALC" \

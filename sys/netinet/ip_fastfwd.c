@@ -469,32 +469,6 @@ passout:
 	} else
 		gw = (const struct sockaddr *)dst;
 
-	/*
-	 * If the IP/SCTP/TCP/UDP header still needs a valid checksum and the
-	 * interface will not calculate it for us, do it here.
-	 * Note that if we defer checksum calculation, we might send an ICMP
-	 * message later that reflects this packet, which still has an
-	 * invalid checksum.
-	 */
-	if (__predict_false(m->m_pkthdr.csum_flags & CSUM_IP &
-	    ~nh->nh_ifp->if_hwassist)) {
-		ip->ip_sum = 0;
-		ip->ip_sum = in_cksum(m, (ip->ip_hl << 2));
-		m->m_pkthdr.csum_flags &= ~CSUM_IP;
-	}
-	if (__predict_false(m->m_pkthdr.csum_flags & CSUM_DELAY_DATA &
-	    ~nh->nh_ifp->if_hwassist)) {
-		in_delayed_cksum(m);
-		m->m_pkthdr.csum_flags &= ~CSUM_DELAY_DATA;
-	}
-#if defined(SCTP) || defined(SCTP_SUPPORT)
-	if (__predict_false(m->m_pkthdr.csum_flags & CSUM_IP_SCTP &
-	    ~nh->nh_ifp->if_hwassist)) {
-		sctp_delayed_cksum(m, (uint32_t)(ip->ip_hl << 2));
-		m->m_pkthdr.csum_flags &= ~CSUM_IP_SCTP;
-	}
-#endif
-
 	/* Handle redirect case. */
 	redest.s_addr = 0;
 	if (V_ipsendredirects && osrc.s_addr == ip->ip_src.s_addr &&
@@ -528,8 +502,7 @@ passout:
 			 * We have to fragment the packet
 			 */
 			m->m_pkthdr.csum_flags |= CSUM_IP;
-			if (ip_fragment(ip, &m, nh->nh_mtu,
-			    nh->nh_ifp->if_hwassist) != 0)
+			if (ip_fragment(ip, &m, nh->nh_mtu) != 0)
 				goto drop;
 			KASSERT(m != NULL, ("null mbuf and no error"));
 			/*

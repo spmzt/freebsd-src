@@ -126,6 +126,7 @@
 #include <netinet6/in6_ifattach.h>
 #endif
 #if defined(INET) || defined(INET6)
+#include <net/if_offload.h>
 #include <netinet/ip_carp.h>
 #endif
 #include <machine/in_cksum.h>
@@ -195,8 +196,7 @@
 /*
  * List of capabilities to possibly mask on the member interface.
  */
-#define	BRIDGE_IFCAPS_MASK		(IFCAP_TOE|IFCAP_TSO|IFCAP_TXCSUM|\
-					 IFCAP_TXCSUM_IPV6|IFCAP_MEXTPG)
+#define	BRIDGE_IFCAPS_MASK		(IFCAP_TOE|IFCAP_TSO|IFCAP_MEXTPG)
 
 /*
  * List of capabilities to strip
@@ -871,7 +871,11 @@ bridge_clone_create(struct if_clone *ifc, char *name, size_t len,
 	ifp->if_softc = sc;
 	if_initname(ifp, bridge_name, ifd->unit);
 	ifp->if_flags = IFF_BROADCAST | IFF_SIMPLEX | IFF_MULTICAST;
-	ifp->if_capabilities = ifp->if_capenable = IFCAP_VLAN_HWTAGGING;
+	ifp->if_capabilities = ifp->if_capenable = IFCAP_VLAN_HWTAGGING |
+	    IFCAP_TXCSUM | IFCAP_TXCSUM_IPV6 | IFCAP_VLAN_HWCSUM;
+#if defined(INET) || defined(INET6)
+	ifp->if_hwassist = IF_OFFLOAD_EXPECTED;
+#endif /* defined(INET) || defined(INET6) */
 	ifp->if_ioctl = bridge_ioctl;
 #ifdef ALTQ
 	ifp->if_start = bridge_altq_start;
@@ -4370,7 +4374,7 @@ bridge_fragment(struct ifnet *ifp, struct mbuf **mp, struct ether_header *eh,
 	ip = mtod(m, struct ip *);
 
 	m->m_pkthdr.csum_flags |= CSUM_IP;
-	error = ip_fragment(ip, &m, ifp->if_mtu, ifp->if_hwassist);
+	error = ip_fragment(ip, &m, ifp->if_mtu);
 	if (error)
 		goto dropit;
 

@@ -220,8 +220,7 @@ int	inp_getmoptions(struct inpcb *, struct sockopt *);
 int	inp_setmoptions(struct inpcb *, struct sockopt *);
 
 int	ip_ctloutput(struct socket *, struct sockopt *sopt);
-int	ip_fragment(struct ip *ip, struct mbuf **m_frag, int mtu,
-	    u_long if_hwassist_flags);
+int	ip_fragment(struct ip *ip, struct mbuf **m_frag, int mtu);
 void	ip_forward(struct mbuf *m, int srcrt);
 int	ip_output(struct mbuf *,
 	    struct mbuf *, struct route *, int, struct ip_moptions *,

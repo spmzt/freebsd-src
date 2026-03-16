@@ -759,16 +759,6 @@ sendit:
 	}
 
 	m->m_pkthdr.csum_flags |= CSUM_IP;
-	if (m->m_pkthdr.csum_flags & CSUM_DELAY_DATA & ~ifp->if_hwassist) {
-		in_delayed_cksum(m);
-		m->m_pkthdr.csum_flags &= ~CSUM_DELAY_DATA;
-	}
-#if defined(SCTP) || defined(SCTP_SUPPORT)
-	if (m->m_pkthdr.csum_flags & CSUM_SCTP & ~ifp->if_hwassist) {
-		sctp_delayed_cksum(m, (uint32_t)(ip->ip_hl << 2));
-		m->m_pkthdr.csum_flags &= ~CSUM_SCTP;
-	}
-#endif
 
 	/*
 	 * If small enough for interface, or the interface will take
@@ -778,14 +768,8 @@ sendit:
 	 * instead just pass them on to the driver.
 	 */
 	if (ip_len <= mtu ||
-	    (m->m_pkthdr.csum_flags & ifp->if_hwassist &
+	    (m->m_pkthdr.csum_flags &/* ifp->if_hwassist &*/
 	    (CSUM_TSO | CSUM_INNER_TSO)) != 0) {
-		ip->ip_sum = 0;
-		if (m->m_pkthdr.csum_flags & CSUM_IP & ~ifp->if_hwassist) {
-			ip->ip_sum = in_cksum(m, hlen);
-			m->m_pkthdr.csum_flags &= ~CSUM_IP;
-		}
-
 		/*
 		 * Record statistics for this interface address.
 		 * With CSUM_TSO the byte/packet count will be slightly
@@ -829,7 +813,7 @@ sendit:
 	 * Too large for interface; fragment if possible. If successful,
 	 * on return, m will point to a list of packets to be sent.
 	 */
-	error = ip_fragment(ip, &m, mtu, ifp->if_hwassist);
+	error = ip_fragment(ip, &m, mtu);
 	if (error)
 		goto bad;
 	for (; m; m = m0) {
@@ -870,12 +854,9 @@ bad:
  * mbuf to be fragmented; on return it points to the chain with the fragments.
  * Return 0 if no error. If error, m_frag may contain a partially built
  * chain of fragments that should be freed by the caller.
- *
- * if_hwassist_flags is the hw offload capabilities (see if_data.ifi_hwassist)
  */
 int
-ip_fragment(struct ip *ip, struct mbuf **m_frag, int mtu,
-    u_long if_hwassist_flags)
+ip_fragment(struct ip *ip, struct mbuf **m_frag, int mtu)
 {
 	int error = 0;
 	int hlen = ip->ip_hl << 2;
@@ -1015,11 +996,6 @@ smart_frag_failure:
 		mac_netinet_fragment(m0, m);
 #endif
 		mhip->ip_off = htons(mhip->ip_off);
-		mhip->ip_sum = 0;
-		if (m->m_pkthdr.csum_flags & CSUM_IP & ~if_hwassist_flags) {
-			mhip->ip_sum = in_cksum(m, mhlen);
-			m->m_pkthdr.csum_flags &= ~CSUM_IP;
-		}
 		*mnext = m;
 		mnext = &m->m_nextpkt;
 	}
@@ -1033,11 +1009,6 @@ smart_frag_failure:
 	m0->m_pkthdr.len = hlen + firstlen;
 	ip->ip_len = htons((u_short)m0->m_pkthdr.len);
 	ip->ip_off = htons(ip_off | IP_MF);
-	ip->ip_sum = 0;
-	if (m0->m_pkthdr.csum_flags & CSUM_IP & ~if_hwassist_flags) {
-		ip->ip_sum = in_cksum(m0, hlen);
-		m0->m_pkthdr.csum_flags &= ~CSUM_IP;
-	}
 
 done:
 	*m_frag = m0;

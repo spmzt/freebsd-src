@@ -132,6 +132,7 @@ struct ifnet {
 		(struct ifnet *, struct sockaddr **, struct sockaddr *);
 	if_qflush_fn_t	if_qflush;	/* flush any queue */
 	if_transmit_fn_t if_transmit;   /* initiate output routine */
+	if_transmit_fn_t if_transmit_org;   /* original output routine */
 
 	if_reassign_fn_t if_reassign;		/* reassign to vnet routine */
 	if_get_counter_t if_get_counter; /* get counter values */

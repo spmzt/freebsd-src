@@ -1461,9 +1461,11 @@ udp_send(struct socket *so, int flags, struct mbuf *m, struct sockaddr *addr,
 	} else if (V_udp_cksum) {
 		if (inp->inp_flags & INP_ONESBCAST)
 			faddr.s_addr = INADDR_BROADCAST;
+		/*
 		ui->ui_sum = in_pseudo(ui->ui_src.s_addr, faddr.s_addr,
 		    htons((u_short)len + sizeof(struct udphdr) + pr));
-		m->m_pkthdr.csum_flags = CSUM_UDP;
+		*/
+		m->m_pkthdr.csum_flags = (CSUM_UDP | CSUM_IP_PSEUDO);
 		m->m_pkthdr.csum_data = offsetof(struct udphdr, uh_sum);
 	}
 	/*

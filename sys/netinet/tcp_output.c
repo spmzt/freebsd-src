@@ -1359,11 +1359,13 @@ send:
 			th->th_sum = htons(0);
 			UDPSTAT_INC(udps_opackets);
 		} else {
-			m->m_pkthdr.csum_flags = CSUM_TCP_IPV6;
+			m->m_pkthdr.csum_flags = (CSUM_TCP_IPV6 | CSUM_IP6_PSEUDO);
 			m->m_pkthdr.csum_data = offsetof(struct tcphdr, th_sum);
+			/*
 			th->th_sum = in6_cksum_pseudo(ip6,
 			    sizeof(struct tcphdr) + optlen + len, IPPROTO_TCP,
 			    0);
+			*/
 		}
 	}
 #endif
@@ -1380,11 +1382,13 @@ send:
 			th->th_sum = htons(0);
 			UDPSTAT_INC(udps_opackets);
 		} else {
-			m->m_pkthdr.csum_flags = CSUM_TCP;
+			m->m_pkthdr.csum_flags = (CSUM_TCP | CSUM_IP_PSEUDO);
 			m->m_pkthdr.csum_data = offsetof(struct tcphdr, th_sum);
+			/*
 			th->th_sum = in_pseudo(ip->ip_src.s_addr,
 			    ip->ip_dst.s_addr, htons(sizeof(struct tcphdr) +
 			    IPPROTO_TCP + len + optlen));
+			*/
 		}
 
 		/* IP version must be set here for ipv4/ipv6 checking later */
@@ -1400,7 +1404,7 @@ send:
 	if (tso) {
 		KASSERT(len > tp->t_maxseg - optlen - ipsec_optlen,
 		    ("%s: len <= tso_segsz", __func__));
-		m->m_pkthdr.csum_flags |= CSUM_TSO;
+		m->m_pkthdr.csum_flags |= (isipv6 ? CSUM_IP6_TSO : CSUM_IP_TSO);
 		m->m_pkthdr.tso_segsz = tp->t_maxseg - optlen - ipsec_optlen;
 	}
 

@@ -10049,7 +10049,7 @@ pf_route(struct pf_krule *r, struct ifnet *oifp,
 		goto bad;
 	}
 
-	error = ip_fragment(ip, &m0, ifp->if_mtu, ifp->if_hwassist);
+	error = ip_fragment(ip, &m0, ifp->if_mtu);
 	if (error) {
 		SDT_PROBE1(pf, ip, route_to, drop, __LINE__);
 		action = PF_DROP;

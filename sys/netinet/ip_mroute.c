@@ -2359,7 +2359,7 @@ pim_register_prepare(struct ip *ip, struct mbuf *m)
 	} else {
 		/* Fragment the packet */
 		mb_copy->m_pkthdr.csum_flags |= CSUM_IP;
-		if (ip_fragment(ip, &mb_copy, mtu, 0) != 0) {
+		if (ip_fragment(ip, &mb_copy, mtu) != 0) {
 			m_freem(mb_copy);
 			return NULL;
 		}

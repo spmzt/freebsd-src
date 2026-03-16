@@ -422,7 +422,7 @@ ip6_output(struct mbuf *m0, struct ip6_pktopts *opt,
 	struct in6_addr src0, dst0;
 	u_int32_t zone;
 	bool hdrsplit;
-	int sw_csum, tso;
+	int tso;
 	int needfiblookup;
 	uint32_t fibnum;
 	struct m_tag *fwd_tag = NULL;
@@ -1114,11 +1114,9 @@ passout:
 	 * 2-a:	send as is if tlen <= interface mtu
 	 * 2-b:	error if tlen > interface mtu
 	 */
-	sw_csum = m->m_pkthdr.csum_flags;
 	if (!hdrsplit) {
-		tso = ((sw_csum & ifp->if_hwassist &
+		tso = ((m->m_pkthdr.csum_flags &/* ifp->if_hwassist &*/
 		    (CSUM_TSO | CSUM_INNER_TSO)) != 0) ? 1 : 0;
-		sw_csum &= ~ifp->if_hwassist;
 	} else
 		tso = 0;
 	/*
@@ -1127,7 +1125,6 @@ passout:
 	 * XXX-BZ  Need a framework to know when the NIC can handle it, even
 	 * with ext. hdrs.
 	 */
-	ip6_output_delayed_csum(m, ifp, sw_csum, plen, optlen);
 	/* XXX-BZ m->m_pkthdr.csum_flags &= ~ifp->if_hwassist; */
 	tlen = m->m_pkthdr.len;
 

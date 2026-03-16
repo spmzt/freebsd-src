@@ -934,8 +934,8 @@ udp6_send(struct socket *so, int flags_arg, struct mbuf *m,
 		    sizeof(struct ip6_hdr), plen, cscov)) == 0)
 			udp6->uh_sum = 0xffff;
 	} else {
-		udp6->uh_sum = in6_cksum_pseudo(ip6, plen, nxt, 0);
-		m->m_pkthdr.csum_flags = CSUM_UDP_IPV6;
+		/* udp6->uh_sum = in6_cksum_pseudo(ip6, plen, nxt, 0); */
+		m->m_pkthdr.csum_flags = (CSUM_UDP_IPV6 | CSUM_IP6_PSEUDO);
 		m->m_pkthdr.csum_data = offsetof(struct udphdr, uh_sum);
 	}
 
