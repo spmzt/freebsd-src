@@ -1413,11 +1413,8 @@ nd6_prelist_add(struct nd_prefixctl *pr, struct nd_defrouter *dr,
 	ND6_WUNLOCK();
 
 	/* ND_OPT_PI_FLAG_ONLINK processing */
-	if (new->ndpr_raf_onlink) {
-		struct epoch_tracker et;
-
+	if (new->ndpr_raf_onlink != 0) {
 		ND6_ONLINK_LOCK();
-		NET_EPOCH_ENTER(et);
 		if ((error = nd6_prefix_onlink(new)) != 0) {
 			nd6log((LOG_ERR, "%s: failed to make the prefix %s/%d "
 			    "on-link on %s (errno=%d)\n", __func__,
@@ -1425,7 +1422,6 @@ nd6_prelist_add(struct nd_prefixctl *pr, struct nd_defrouter *dr,
 			    pr->ndpr_plen, if_name(pr->ndpr_ifp), error));
 			/* proceed anyway. XXX: is it correct? */
 		}
-		NET_EPOCH_EXIT(et);
 		ND6_ONLINK_UNLOCK();
 	}
 
