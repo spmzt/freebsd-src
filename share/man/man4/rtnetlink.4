@@ -22,7 +22,7 @@
 .\" OUT OF THE USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF
 .\" SUCH DAMAGE.
 .\"
-.Dd November 1, 2022
+.Dd May 04, 2026
 .Dt RTNETLINK 4
 .Os
 .Sh NAME
@@ -165,6 +165,7 @@ field contains the index of the transmit interface.
 The following TLVs can follow the structure:
 .Bd -literal -offset indent -compact
 RTA_GATEWAY	IPv4/IPv6 nexthop address of the gateway
+RTA_PRIORITY	nexthop metric of the gateway
 RTA_VIA		IPv6 nexthop address for IPv4 route
 RTA_KNH_ID	Kernel-specific index of the nexthop
 .Ed
@@ -178,6 +179,8 @@ Default route table is
 .Dv RT_TABLE_MAIN .
 To explicitly specify "all tables" one needs to set the value to
 .Dv RT_TABLE_UNSPEC .
+.It Dv RTA_PRIORITY
+(uint32_t) metric of the nexthop.
 .It Dv RTA_EXPIRES
 (uint32_t) seconds till path expiration.
 .It Dv RTA_NH_ID
