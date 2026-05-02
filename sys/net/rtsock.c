@@ -1024,6 +1024,7 @@ update_rtm_from_rc(struct rt_addrinfo *info, struct rt_msghdr **prtm,
 			(rtm->rtm_flags & ~RTF_GWFLAG_COMPAT);
 	rt_getmetrics(rc->rc_rt, nh, &rtm->rtm_rmx);
 	rtm->rtm_rmx.rmx_weight = rc->rc_nh_weight;
+	rtm->rtm_rmx.rmx_metric = nhop_get_metric(nh);
 
 	return (0);
 }
@@ -1328,6 +1329,7 @@ rt_getmetrics(const struct rtentry *rt, const struct nhop_object *nh,
 	bzero(out, sizeof(*out));
 	out->rmx_mtu = nh->nh_mtu;
 	out->rmx_weight = rt->rt_weight;
+	out->rmx_metric = nhop_get_metric(nh);
 	out->rmx_nhidx = nhop_get_idx(nh);
 	/* Kernel -> userland timebase conversion. */
 	out->rmx_expire = nhop_get_expire(nh) ?

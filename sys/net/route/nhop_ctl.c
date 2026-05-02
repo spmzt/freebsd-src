@@ -1044,6 +1044,18 @@ nhop_set_origin(struct nhop_object *nh, uint8_t origin)
 	nh->nh_priv->nh_origin = origin;
 }
 
+uint32_t
+nhop_get_metric(const struct nhop_object *nh)
+{
+	return (nh->nh_metric);
+}
+
+void
+nhop_set_metric(struct nhop_object *nh, uint32_t metric)
+{
+	nh->nh_metric = metric;
+}
+
 void
 nhops_update_ifmtu(struct rib_head *rh, struct ifnet *ifp, uint32_t mtu)
 {
