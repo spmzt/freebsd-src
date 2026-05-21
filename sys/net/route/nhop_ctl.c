@@ -90,6 +90,7 @@ static void fill_sdl_from_ifp(struct sockaddr_dl_short *sdl, const struct ifnet 
 
 static void destroy_nhop_epoch(epoch_context_t ctx);
 static void destroy_nhop(struct nhop_object *nh);
+static void nhops_ifnet_link_event(void *arg, struct ifnet *ifp, int state);
 
 _Static_assert(__offsetof(struct nhop_object, nh_ifp) == 32,
     "nhop_object: wrong nh_ifp offset");
@@ -109,6 +110,8 @@ nhops_init(void)
 	nhops_zone = uma_zcreate("routing nhops",
 	    NHOP_OBJECT_ALIGNED_SIZE + NHOP_PRIV_ALIGNED_SIZE,
 	    NULL, NULL, NULL, NULL, UMA_ALIGN_PTR, 0);
+	EVENTHANDLER_REGISTER(ifnet_link_event, nhops_ifnet_link_event, NULL,
+			EVENTHANDLER_PRI_ANY);
 }
 
 /*
@@ -1316,4 +1319,42 @@ nhops_dump_sysctl(struct rib_head *rh, struct sysctl_req *w)
 	NHOPS_RUNLOCK(ctl);
 
 	return (0);
+}
+
+static void
+nhops_ifnet_link_event(void *arg __unused, struct ifnet *ifp, int state)
+{
+	struct nhop_object *nh;
+	struct nhop_iter iter = { .fibnum = ifp->if_fib };
+
+#ifdef INET
+	if (ifp->if_inet != NULL) {
+		iter.family = AF_INET;
+		for (nh = nhops_iter_start(&iter); nh != NULL; nh = nhops_iter_next(&iter)) {
+			if (nh->nh_ifp != ifp)
+				continue;
+
+			if (state == LINK_STATE_UP)
+				nh->nh_flags &= ~NHF_INVALID;
+			else if (state == LINK_STATE_DOWN)
+				nh->nh_flags |= NHF_INVALID;
+		}
+		nhops_iter_stop(&iter);
+	}
+#endif
+#ifdef INET6
+	if (ifp->if_inet6 != NULL) {
+		iter.family = AF_INET6;
+		for (nh = nhops_iter_start(&iter); nh != NULL; nh = nhops_iter_next(&iter)) {
+			if (nh->nh_ifp != ifp)
+				continue;
+
+			if (state == LINK_STATE_UP)
+				nh->nh_flags &= ~NHF_INVALID;
+			else if (state == LINK_STATE_DOWN)
+				nh->nh_flags |= NHF_INVALID;
+		}
+		nhops_iter_stop(&iter);
+	}
+#endif
 }

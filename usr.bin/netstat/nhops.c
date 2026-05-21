@@ -91,6 +91,7 @@ static struct bits nh_bits[] = {
 	{ NHF_GATEWAY,	'G', "gateway" },
 	{ NHF_DEFAULT,	'd', "default" },
 	{ NHF_BROADCAST,'b', "broadcast" },
+	{ NHF_INVALID,	'D', "down" },
 	{ 0 , 0, NULL }
 };
 
@@ -114,6 +115,7 @@ struct nhop_map {
 static struct nhop_map global_nhop_map;
 
 static struct nhop_entry *nhop_get(struct nhop_map *map, uint32_t idx);
+static void p_nhflags(int f, const char *format);
 
 
 static struct ifmap_entry *ifmap;
@@ -281,7 +283,7 @@ print_nhop_entry_sysctl(const char *name, struct rt_msghdr *rtm, struct nhop_ext
 	snprintf(buffer, sizeof(buffer), "{[:-%d}{:flags/%%s}{]:} ",
 	    wid_flags - protrusion);
 
-	//p_nhflags(nh->nh_flags, buffer);
+	p_nhflags(nh->nh_flags, buffer);
 	print_flags_generic(rtm->rtm_flags, rt_bits, buffer, "rt_flags_pretty");
 
 	if (Wflag) {
