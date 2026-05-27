@@ -224,7 +224,8 @@ dump_rc_nhg(struct nl_writer *nw, const struct route_nhop_data *rnd, struct rtms
 			nlattr_add_u32(nw, NL_RTA_RTFLAGS, rtflags);
 		if (rtflags & RTF_FIXEDMTU)
 			dump_rc_nhop_mtu(nw, wn[i].nh);
-		nlattr_add_u32(nw, NL_RTA_PRIORITY, nhop_get_metric(wn[i].nh));
+		if (nhop_get_metric(wn[i].nh) != RT_DEFAULT_METRIC)
+			nlattr_add_u32(nw, NL_RTA_PRIORITY, nhop_get_metric(wn[i].nh));
 		nh_expire = nhop_get_expire(wn[i].nh);
 		if (nh_expire > 0)
 			nlattr_add_u32(nw, NL_RTA_EXPIRES, nh_expire - time_uptime);
@@ -241,7 +242,8 @@ dump_rc_nhg(struct nl_writer *nw, const struct route_nhop_data *rnd, struct rtms
 		rtnh->rtnh_len = nlattr_save_offset(nw) - nh_off;
 	}
 	nlattr_set_len(nw, off);
-	nlattr_add_u32(nw, NL_RTA_PRIORITY, nhop_metric);
+	if (nhop_metric != RT_DEFAULT_METRIC)
+		nlattr_add_u32(nw, NL_RTA_PRIORITY, nhop_metric);
 	nlattr_add_u32(nw, NL_RTA_WEIGHT, nhop_weight);
 }
 
@@ -283,7 +285,8 @@ dump_rc_nhop(struct nl_writer *nw, const struct route_nhop_data *rnd, struct rtm
 	/* In any case, fill outgoing interface */
 	nlattr_add_u32(nw, NL_RTA_OIF, if_getindex(nh->nh_ifp));
 
-	nlattr_add_u32(nw, NL_RTA_PRIORITY, nhop_get_metric(nh));
+	if (nhop_get_metric(nh) != RT_DEFAULT_METRIC)
+		nlattr_add_u32(nw, NL_RTA_PRIORITY, nhop_get_metric(nh));
 	if (rnd->rnd_weight != RT_DEFAULT_WEIGHT)
 		nlattr_add_u32(nw, NL_RTA_WEIGHT, rnd->rnd_weight);
 }

@@ -234,6 +234,8 @@ p_rtentry_netlink(struct snl_state *ss, const char *name, struct nlmsghdr *hdr)
 		return;
 	if (rt.rtax_weight == 0)
 		rt.rtax_weight = rt_default_weight;
+	if (rt.rta_metric == 0)
+		rt.rta_metric = rt_default_metric;
 
 	if (rt.rta_multipath.num_nhops != 0) {
 		uint32_t orig_rtflags = rt.rta_rtflags;
@@ -244,7 +246,7 @@ p_rtentry_netlink(struct snl_state *ss, const char *name, struct nlmsghdr *hdr)
 			rt.rta_gw = nhop->gw;
 			rt.rta_oif = nhop->ifindex;
 			rt.rtax_weight = nhop->rtnh_weight;
-			rt.rta_metric = nhop->rta_metric;
+			rt.rta_metric = nhop->rta_metric != 0 ? nhop->rta_metric : rt_default_metric;
 			rt.rta_rtflags = nhop->rta_rtflags ? nhop->rta_rtflags : orig_rtflags;
 			rt.rtax_mtu = nhop->rtax_mtu ? nhop->rtax_mtu : orig_mtu;
 			rt.rta_expire = nhop->rta_expire;

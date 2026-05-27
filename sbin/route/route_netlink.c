@@ -355,7 +355,10 @@ static void
 print_getmsg(struct nl_helper *h, struct nlmsghdr *hdr, struct sockaddr *dst)
 {
 	struct snl_state *ss = &h->ss_cmd;
-	struct snl_parsed_route r = { .rtax_weight = RT_DEFAULT_WEIGHT };
+	struct snl_parsed_route r = {
+		.rtax_weight = RT_DEFAULT_WEIGHT,
+		.rta_metric = RT_DEFAULT_METRIC,
+	};
 
 	if (!snl_parse_nlmsg(ss, hdr, &snl_rtm_route_parser, &r))
 		return;
@@ -405,7 +408,10 @@ static void
 print_nhop_getmsg(struct nl_helper *h, struct nlmsghdr *hdr, struct sockaddr *dst)
 {
 	struct snl_state *ss = &h->ss_cmd;
-	struct snl_parsed_route r = { .rtax_weight = RT_DEFAULT_WEIGHT };
+	struct snl_parsed_route r = {
+		.rtax_weight = RT_DEFAULT_WEIGHT,
+		.rta_metric = RT_DEFAULT_METRIC,
+	};
 	struct snl_parsed_link_simple link = {};
 	struct sockaddr *mask;
 
@@ -570,7 +576,10 @@ static void
 print_nlmsg_route(struct nl_helper *h, struct nlmsghdr *hdr,
     struct snl_msg_info *cinfo)
 {
-	struct snl_parsed_route r = { .rtax_weight = RT_DEFAULT_WEIGHT };
+	struct snl_parsed_route r = {
+		.rtax_weight = RT_DEFAULT_WEIGHT,
+		.rta_metric = RT_DEFAULT_METRIC,
+	};
 	struct snl_state *ss = &h->ss_cmd;
 
 	if (!snl_parse_nlmsg(ss, hdr, &snl_rtm_route_parser, &r))
@@ -941,7 +950,10 @@ flushroutes_fib_nl(int fib, int af)
 	nl_helper_init(&h);
 	
 	while ((hdr = snl_read_reply_multi(&ss, nlm_seq, &e)) != NULL) {
-		struct snl_parsed_route r = { .rtax_weight = RT_DEFAULT_WEIGHT };
+		struct snl_parsed_route r = {
+			.rtax_weight = RT_DEFAULT_WEIGHT,
+			.rta_metric = RT_DEFAULT_METRIC,
+		};
 		int error;
 
 		if (!snl_parse_nlmsg(&ss, hdr, &snl_rtm_route_parser, &r))
