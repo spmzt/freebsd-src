@@ -112,7 +112,6 @@ struct in6_ndireq {
 	char ifname[IFNAMSIZ];
 	struct nd_ifinfo {
 		uint32_t linkmtu;	/* LinkMTU */
-		uint32_t maxmtu;	/* Upper bound of LinkMTU */
 		uint32_t basereachable;	/* BaseReachableTime */
 		uint32_t reachable;	/* Reachable Time */
 		uint32_t retrans;	/* Retrans Timer */
@@ -348,7 +347,6 @@ void nd6_option_init(void *, int, union nd_opts *);
 struct nd_opt_hdr *nd6_option(union nd_opts *);
 int nd6_options(union nd_opts *);
 struct llentry *nd6_lookup(const struct in6_addr *, int, struct ifnet *);
-void nd6_setmtu(struct ifnet *);
 void nd6_llinfo_setstate(struct llentry *lle, int newstate);
 void nd6_timer(void *);
 void nd6_purge(struct ifnet *);

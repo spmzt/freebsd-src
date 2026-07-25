@@ -297,7 +297,6 @@ nd6_ifattach(struct ifnet *ifp)
 	struct in6_ifextra *nd = ifp->if_inet6;
 
 	nd->nd_linkmtu = 0;
-	nd->nd_maxmtu = ifp->if_mtu;
 	nd->nd_basereachable = REACHABLE_TIME;
 	nd->nd_reachable = ND_COMPUTE_RTIME(nd->nd_basereachable);
 	nd->nd_retrans = RETRANS_TIMER;
@@ -361,37 +360,6 @@ nd6_ifdetach(struct ifnet *ifp)
 		nd6_dad_stop(ifa);
 	}
 	NET_EPOCH_EXIT(et);
-}
-
-/*
- * Reset ND level link MTU. This function is called when the physical MTU
- * changes, which means we might have to adjust the ND level MTU.
- * XXX todo: do not maintain copy of ifp->if_mtu in if_inet6->nd_maxmtu.
- */
-void
-nd6_setmtu(struct ifnet *ifp)
-{
-	struct in6_ifextra *ndi = ifp->if_inet6;
-	uint32_t omaxmtu;
-
-	/* XXXGL: safety against IFT_PFSYNC */
-	if (ndi == NULL)
-		return;
-
-	omaxmtu = ndi->nd_maxmtu;
-	ndi->nd_maxmtu = ifp->if_mtu;
-
-	/*
-	 * Decreasing the interface MTU under IPV6 minimum MTU may cause
-	 * undesirable situation.  We thus notify the operator of the change
-	 * explicitly.  The check for omaxmtu is necessary to restrict the
-	 * log to the case of changing the MTU, not initializing it.
-	 */
-	if (omaxmtu >= IPV6_MMTU && ndi->nd_maxmtu < IPV6_MMTU) {
-		log(LOG_NOTICE, "%s: "
-		    "new link MTU on %s (%lu) is too small for IPv6\n",
-		    __func__, if_name(ifp), (unsigned long)ndi->nd_maxmtu);
-	}
 }
 
 void
@@ -1668,7 +1636,6 @@ nd6_ioctl(u_long cmd, caddr_t data, struct ifnet *ifp)
 	case SIOCGIFINFO_IN6:
 		ND = (struct nd_ifinfo){
 			.linkmtu = ext->nd_linkmtu,
-			.maxmtu = ext->nd_maxmtu,
 			.basereachable = ext->nd_basereachable,
 			.reachable = ext->nd_reachable,
 			.retrans = ext->nd_retrans,

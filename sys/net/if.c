@@ -286,14 +286,6 @@ static bool	if_unlink_ifnet(struct ifnet *, bool);
 static void	if_vmove(struct ifnet *, struct vnet *);
 #endif
 
-#ifdef INET6
-/*
- * XXX: declare here to avoid to include many inet6 related files..
- * should be more generalized?
- */
-extern void	nd6_setmtu(struct ifnet *);
-#endif
-
 /* ipsec helper hooks */
 VNET_DEFINE(struct hhook_head *, ipsec_hhh_in[HHOOK_IPSEC_COUNT]);
 VNET_DEFINE(struct hhook_head *, ipsec_hhh_out[HHOOK_IPSEC_COUNT]);
@@ -2664,7 +2656,7 @@ ifhwioctl(u_long cmd, struct ifnet *ifp, caddr_t data, struct thread *td)
 		 * If the link MTU changed, do network layer specific procedure.
 		 */
 		if (ifp->if_mtu != oldmtu)
-			if_notifymtu(ifp);
+			if_notifymtu(ifp, oldmtu);
 		break;
 	}
 
@@ -4341,10 +4333,11 @@ if_setmtu(if_t ifp, int mtu)
 }
 
 void
-if_notifymtu(if_t ifp)
+if_notifymtu(if_t ifp, uint32_t oldmtu)
 {
+
 #ifdef INET6
-	nd6_setmtu(ifp);
+	in6_ifmtu_notify(ifp, oldmtu);
 #endif
 	rt_updatemtu(ifp);
 }

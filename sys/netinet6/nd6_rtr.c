@@ -433,7 +433,7 @@ nd6_ra_opt_mtu(struct nd_opt_mtu *optmtu, struct ifnet *ifp,
 {
 	struct in6_ifextra *ndi;
 	char ip6bufs[INET6_ADDRSTRLEN];
-	uint32_t mtu, maxmtu;
+	uint32_t mtu;
 
 	ndi = ifp->if_inet6;
 
@@ -448,9 +448,7 @@ nd6_ra_opt_mtu(struct nd_opt_mtu *optmtu, struct ifnet *ifp,
 	}
 
 	/* upper bound */
-	maxmtu = (ndi->nd_maxmtu && ndi->nd_maxmtu < ifp->if_mtu)
-	    ? ndi->nd_maxmtu : ifp->if_mtu;
-	if (mtu <= maxmtu) {
+	if (mtu <= ifp->if_mtu) {
 		if (ndi->nd_linkmtu != mtu) {
 			ndi->nd_linkmtu = mtu;
 			rt_updatemtu(ifp);
@@ -458,7 +456,7 @@ nd6_ra_opt_mtu(struct nd_opt_mtu *optmtu, struct ifnet *ifp,
 	} else {
 		nd6log((LOG_INFO, "%s: bogus mtu=%u sent from %s; "
 		    "exceeds maxmtu %u, ignoring\n", __func__,
-		    mtu, ip6_sprintf(ip6bufs, &saddr6), maxmtu));
+		    mtu, ip6_sprintf(ip6bufs, &saddr6), ifp->if_mtu));
 	}
 }
 

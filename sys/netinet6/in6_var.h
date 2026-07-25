@@ -501,7 +501,6 @@ struct in6_ifextra {
 				   sizeof(uint64_t)];
 	/* ND6 */
 	uint32_t	nd_linkmtu;
-	uint32_t	nd_maxmtu;
 	uint32_t	nd_basereachable;
 	uint32_t	nd_reachable;
 	uint32_t	nd_retrans;
@@ -900,6 +899,7 @@ void	in6_purgeifaddr(struct in6_ifaddr *);
 int	in6if_do_dad(struct ifnet *);
 void	in6_savemkludge(struct in6_ifaddr *);
 uint32_t in6_ifmtu(const struct ifnet *);
+void	in6_ifmtu_notify(struct ifnet *, uint32_t);
 struct rib_head *in6_inithead(uint32_t fibnum);
 void	in6_detachhead(struct rib_head *rh);
 int	in6_if2idlen(struct ifnet *);

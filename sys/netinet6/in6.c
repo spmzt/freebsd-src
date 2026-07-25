@@ -2621,16 +2621,29 @@ EVENTHANDLER_DEFINE(ifnet_arrival_event, in6_ifarrival, NULL,
 uint32_t
 in6_ifmtu(const struct ifnet *ifp)
 {
-	const uint32_t
-	    linkmtu = ifp->if_inet6->nd_linkmtu,
-	    maxmtu = ifp->if_inet6->nd_maxmtu,
-	    ifmtu = ifp->if_mtu;
+	const uint32_t linkmtu = ifp->if_inet6->nd_linkmtu;
+	const uint32_t ifmtu = ifp->if_mtu;
 
 	if (linkmtu > 0 && linkmtu < ifmtu)
 		return (linkmtu);
-	if (maxmtu > 0 && maxmtu < ifmtu)
-		return (maxmtu);
 	return (ifmtu);
+}
+
+void
+in6_ifmtu_notify(struct ifnet *ifp, uint32_t oldmtu)
+{
+	const uint32_t ifmtu = ifp->if_mtu;
+
+	/*
+	 * Decreasing the interface MTU under IPV6 minimum MTU may cause
+	 * undesirable situation.  We thus notify the operator of the change
+	 * explicitly.
+	 */
+	if (oldmtu >= IPV6_MMTU && ifmtu < IPV6_MMTU) {
+		log(LOG_NOTICE, "%s: "
+		    "new link MTU on %s (%lu) is too small for IPv6\n",
+		    __func__, if_name(ifp), (unsigned long)oldmtu);
+	}
 }
 
 /*

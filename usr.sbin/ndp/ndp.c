@@ -1088,7 +1088,6 @@ ifinfo(char *ifname, int argc, char **argv)
 
 	xo_emit("{e:interface/%s}", ifname);
 	xo_emit("linkmtu={:linkmtu/%d}", ND.linkmtu);
-	xo_emit(", maxmtu={:maxmtu/%d}", ND.maxmtu);
 	xo_emit(", curhlim={:curhlim/%d}", ND.chlim);
 	xo_emit("{d:/, basereachable=%ds%dms}{e:basereachable_ms/%u}",
 	    ND.basereachable / 1000, ND.basereachable % 1000, ND.basereachable);

@@ -2355,7 +2355,7 @@ vlan_ioctl(struct ifnet *ifp, u_long cmd, caddr_t data)
 		 * If it did, do network layer specific procedure.
 		 */
 		if (ifp->if_mtu != oldmtu)
-			if_notifymtu(ifp);
+			if_notifymtu(ifp, oldmtu);
 		break;
 
 	case SIOCGETVLAN:
