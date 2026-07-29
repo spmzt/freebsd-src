@@ -1389,6 +1389,7 @@ nhops_ifnet_link_event(void *arg __unused, struct ifnet *ifp, int state)
 #endif
 
 	if ((ifp->if_flags & IFF_DYING) != 0 ||
+	    (ifp->if_capabilities & IFCAP_LINKSTATE) == 0 ||
 	    (state != LINK_STATE_UP && state != LINK_STATE_DOWN))
 		return;
 
