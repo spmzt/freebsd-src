@@ -287,7 +287,7 @@ test_ecmp_routes_by_event_body()
 	    ifconfig -j${jname} ${epair0}b down
 
 	# Test if our destination is still reachable
-	sleep 0.01
+	sleep 0.1
 	atf_check -o ignore ping -c1 -t1 -S ${lo0_addr} ${lo1_addr}
 
 	# Do the same thing for other interface
@@ -301,7 +301,7 @@ test_ecmp_routes_by_event_body()
 	    ifconfig -j${jname} ${epair1}b down
 
 	# Test if our destination is still reachable
-	sleep 0.01
+	sleep 0.1
 	atf_check -o ignore ping -c1 -t1 -S ${lo0_addr} ${lo1_addr}
 }
 test_ecmp_routes_by_event_cleanup()
