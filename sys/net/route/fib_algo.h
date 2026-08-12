@@ -84,7 +84,7 @@ typedef uint8_t flm_get_pref_t(const struct rib_rtable_info *rinfo);
 struct fib_lookup_module {
 	char		*flm_name;		/* algo name */
 	int		flm_family;		/* address family this module supports */
-	int		flm_refcount;		/* # of references */
+	u_int		flm_refcount;		/* # of references */
 	uint32_t	flm_flags;		/* flags */
 	uint8_t		flm_index;		/* internal algo index */
 	flm_init_t	*flm_init_cb;		/* instance init */

@@ -36,6 +36,7 @@
 #include <sys/sbuf.h>
 #include <sys/lock.h>
 #include <sys/rmlock.h>
+#include <sys/refcount.h>
 #include <sys/malloc.h>
 #include <sys/mbuf.h>
 #include <sys/module.h>
@@ -1176,7 +1177,7 @@ try_setup_fd_instance(struct fib_lookup_module *flm, struct rib_head *rh,
 	fd->fd_flm = flm;
 
 	FIB_MOD_LOCK();
-	flm->flm_refcount++;
+	refcount_acquire(&flm->flm_refcount);
 	fd->fd_gen = ++fib_gen;
 	FIB_MOD_UNLOCK();
 
@@ -1431,7 +1432,7 @@ fib_find_algo(const char *algo_name, int family)
 	TAILQ_FOREACH(flm, &all_algo_list, entries) {
 		if ((strcmp(flm->flm_name, algo_name) == 0) &&
 		    (family == flm->flm_family)) {
-			flm->flm_refcount++;
+			refcount_acquire(&flm->flm_refcount);
 			FIB_MOD_UNLOCK();
 			return (flm);
 		}
@@ -1445,9 +1446,7 @@ static void
 fib_unref_algo(struct fib_lookup_module *flm)
 {
 
-	FIB_MOD_LOCK();
-	flm->flm_refcount--;
-	FIB_MOD_UNLOCK();
+	refcount_release(&flm->flm_refcount);
 }
 
 static int
@@ -1923,7 +1922,7 @@ fib_check_best_algo(struct rib_head *rh, struct fib_lookup_module *orig_flm)
 			curr_preference = preference;
 	}
 	if ((best_flm != NULL) && (curr_preference + BEST_DIFF_PERCENT < best_preference))
-		best_flm->flm_refcount++;
+		refcount_acquire(&best_flm->flm_refcount);
 	else
 		best_flm = NULL;
 	FIB_MOD_UNLOCK();
@@ -2026,6 +2025,7 @@ fib_module_register(struct fib_lookup_module *flm)
 	FIB_MOD_LOCK();
 	ALGO_PRINTF(LOG_INFO, "attaching %s to %s", flm->flm_name,
 	    print_family(flm->flm_family));
+	refcount_init(&flm->flm_refcount, 0);
 	TAILQ_INSERT_TAIL(&all_algo_list, flm, entries);
 	FIB_MOD_UNLOCK();
 
@@ -2043,7 +2043,7 @@ fib_module_unregister(struct fib_lookup_module *flm)
 {
 
 	FIB_MOD_LOCK();
-	if (flm->flm_refcount > 0) {
+	if (refcount_load(&flm->flm_refcount) > 0) {
 		FIB_MOD_UNLOCK();
 		return (EBUSY);
 	}
