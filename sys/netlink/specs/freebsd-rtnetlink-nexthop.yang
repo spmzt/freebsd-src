@@ -1,0 +1,340 @@
+// SPDX-License-Identifier: BSD-2-Clause
+//
+// Copyright (c) 2026 Pouria Mousavizadeh Tehrani <pouria@FreeBSD.org>
+
+module freebsd-rtnetlink-nexthop {
+  yang-version 1.1;
+  namespace "urn:freebsd:yang:freebsd-rtnetlink-nexthop";
+  prefix rtnh;
+
+  import freebsd-netlink-extensions {
+    prefix nlx;
+  }
+  import freebsd-netlink-types {
+    prefix nlt;
+  }
+  import freebsd-rtnetlink-route {
+    prefix rtroute;
+  }
+
+  organization
+    "FreeBSD";
+  contact
+    "Pouria Mousavizadeh Tehrani <pouria@FreeBSD.org>";
+  description
+    "The nexthop messages of FreeBSD's NETLINK_ROUTE protocol,
+     RTM_NEWNEXTHOP, RTM_DELNEXTHOP and RTM_GETNEXTHOP, as
+     <netlink/route/nexthop.h> defines them: the nexthops and
+     nexthop groups a program creates and refers to from routes by
+     index, and the kernel's own nexthops (nhop(9)) when asked;
+     with the fixed header (struct nhmsg), the NHA_ attributes and
+     FreeBSD's own under NHA_FREEBSD.";
+  reference
+    "netlink(4), route(8)";
+
+  revision 2026-10-14 {
+    description
+      "Initial revision, for FreeBSD 16.0-CURRENT (main at
+       84f790e5b6cc).";
+  }
+
+  nlx:protocol NETLINK_ROUTE;
+  nlx:uapi-header "netlink/route/nexthop.h";
+
+  typedef group-type {
+    type enumeration {
+      enum mpath {
+        value 0;
+        description
+          "NEXTHOP_GRP_TYPE_MPATH: a multipath group, the only
+           kind.";
+      }
+      enum res {
+        value 1;
+        description
+          "NEXTHOP_GRP_TYPE_RES: a resilient group; not
+           supported.";
+      }
+    }
+    nlx:width 16;
+    nlx:name-prefix "NEXTHOP_GRP_TYPE_";
+    description
+      "The kind of a nexthop group.";
+  }
+
+  grouping nhmsg {
+    nlx:struct nhmsg;
+    description
+      "The fixed header of a nexthop message (struct nhmsg).";
+    leaf nh-family {
+      type nlt:address-family;
+      description
+        "The family of the gateway (the neighbour's); unspec for a
+         group.";
+    }
+    leaf nh-scope {
+      type rtroute:scope;
+      description
+        "Ignored when read, 0 when sent.";
+    }
+    leaf nh-protocol {
+      type rtroute:route-protocol;
+      description
+        "Who installed the nexthop: read when creating, sent.";
+    }
+    leaf resvd {
+      type uint8;
+      description
+        "Zero.";
+    }
+    leaf nh-flags {
+      type rtroute:nexthop-flags;
+      nlx:width 32;
+      description
+        "RTNH_F_* flags; always 0.";
+    }
+  }
+
+  grouping nexthop-grp {
+    nlx:struct nexthop_grp;
+    description
+      "One member of a nexthop group (struct nexthop_grp).";
+    leaf id {
+      type uint32;
+      description
+        "The nexthop's user index.";
+    }
+    leaf weight {
+      type uint8;
+      description
+        "Its weight.";
+    }
+    leaf resvd1 {
+      type uint8;
+      description
+        "Zero.";
+    }
+    leaf resvd2 {
+      type uint16;
+      description
+        "Zero.";
+    }
+  }
+
+  grouping nexthop-freebsd-attrs {
+    nlx:name-prefix "NHAF_";
+    description
+      "NHA_FREEBSD: what FreeBSD has that Linux does not.";
+    leaf knhops {
+      type empty;
+      nlx:attr 1;
+      description
+        "In a dump request: dump the kernel's own nexthops instead
+         of the user ones.";
+    }
+    leaf kgoups {
+      type empty;
+      nlx:attr 2;
+      description
+        "NHAF_KGOUPS (sic): dump the kernel's nexthop groups; not
+         supported.";
+    }
+    leaf table {
+      type nlt:fibnum;
+      nlx:attr 3;
+      description
+        "The FIB of a kernel nexthop.  Sent when dumping kernel
+         nexthops; read when creating and as a filter.";
+    }
+    leaf family {
+      type nlt:address-family;
+      nlx:width 32;
+      nlx:attr 4;
+      description
+        "The upper family of a kernel nexthop (the routes' family).
+         Sent as 32 bits when dumping kernel nexthops; the kernel
+         reads it as 8 bits.";
+    }
+    leaf kid {
+      type uint32;
+      nlx:attr 5;
+      description
+        "The kernel's index of a kernel nexthop.  Sent when dumping
+         kernel nexthops; read as a filter.";
+    }
+    leaf aif {
+      type nlt:ifindex;
+      nlx:attr 6;
+      description
+        "The interface whose address is the source.  Always sent;
+         read and ignored.";
+    }
+  }
+
+  grouping nexthop-attrs {
+    nlx:name-prefix "NHA_";
+    description
+      "The attributes of a nexthop message.";
+    leaf id {
+      type uint32;
+      nlx:attr 1;
+      description
+        "The user index.  Sent for a user nexthop or group; read
+         in every request, 0 when creating to have one assigned.";
+    }
+    list group {
+      nlx:attr 2;
+      nlx:struct nexthop_grp;
+      description
+        "The members of a group, a packed array of nexthop_grp.
+         Sent for a group; read when creating one, with id and
+         group-type only.";
+      uses nexthop-grp;
+    }
+    leaf group-type {
+      type group-type;
+      nlx:attr 3;
+      description
+        "The group's kind.  Sent for a group; read when creating
+         one.";
+    }
+    leaf blackhole {
+      type empty;
+      nlx:attr 4;
+      description
+        "The nexthop drops packets.  Sent then, with no other
+         attribute; read when creating.";
+    }
+    leaf oif {
+      type nlt:ifindex;
+      nlx:attr 5;
+      description
+        "The transmit interface.  Sent for every nexthop but a
+         blackhole; read when creating and as a filter.";
+    }
+    leaf gateway {
+      type nlt:ip-address;
+      nlx:attr 6;
+      description
+        "The gateway.  Sent when the nexthop has one; read when
+         creating.";
+    }
+    leaf encap-type {
+      type uint16;
+      nlx:attr 7;
+      description
+        "Not supported.";
+    }
+    leaf encap {
+      type binary;
+      nlx:attr 8;
+      description
+        "Not supported.";
+    }
+    leaf groups {
+      type empty;
+      nlx:attr 9;
+      description
+        "In a dump request: dump the groups, not the nexthops.";
+    }
+    leaf master {
+      type nlt:ifindex;
+      nlx:attr 10;
+      description
+        "Not supported.";
+    }
+    leaf fdb {
+      type empty;
+      nlx:attr 11;
+      description
+        "Not supported.";
+    }
+    leaf res-group {
+      type binary;
+      nlx:attr 12;
+      description
+        "Not supported.";
+    }
+    leaf res-bucket {
+      type binary;
+      nlx:attr 13;
+      description
+        "Not supported.";
+    }
+    container freebsd {
+      nlx:attr 14;
+      description
+        "FreeBSD's own.  Sent for a nexthop; read in every
+         request.";
+      uses nexthop-freebsd-attrs;
+    }
+  }
+
+  grouping nexthop-message {
+    nlx:fixed-header nhmsg;
+    description
+      "A nexthop message: the fixed header, then the attributes.";
+    uses nhmsg;
+    uses nexthop-attrs;
+  }
+
+  rpc getnexthop {
+    nlx:msg-type RTM_GETNEXTHOP;
+    nlx:do;
+    nlx:dump;
+    description
+      "With NLM_F_DUMP, list the user nexthops, or the groups with
+       groups, or the kernel's nexthops with freebsd/knhops, those
+       of oif or of freebsd/table when given; without, get the
+       user nexthop or group id.";
+    input {
+      uses nexthop-message;
+    }
+    output {
+      list nexthop {
+        description
+          "One RTM_NEWNEXTHOP message per nexthop or group.";
+        uses nexthop-message;
+      }
+    }
+  }
+
+  rpc newnexthop {
+    nlx:msg-type RTM_NEWNEXTHOP;
+    nlx:do;
+    description
+      "Create a user nexthop, id (0 for one assigned) through
+       gateway on oif, or a blackhole; or a group of the nexthops
+       in group (PRIV_NET_ROUTE).  With NLM_F_REPLACE, replace an
+       existing one and the routes using it.";
+    input {
+      uses nexthop-message;
+    }
+  }
+
+  rpc delnexthop {
+    nlx:msg-type RTM_DELNEXTHOP;
+    nlx:do;
+    description
+      "Delete the user nexthop or group id (PRIV_NET_ROUTE).";
+    input {
+      uses nexthop-message;
+    }
+  }
+
+  notification nexthop-new {
+    nlx:msg-type RTM_NEWNEXTHOP;
+    nlx:group RTNLGRP_NEXTHOP;
+    description
+      "A user nexthop or group was created or replaced.";
+    uses nexthop-message;
+  }
+
+  notification nexthop-del {
+    nlx:msg-type RTM_DELNEXTHOP;
+    nlx:group RTNLGRP_NEXTHOP;
+    description
+      "A user nexthop or group was deleted.";
+    uses nexthop-message;
+  }
+}

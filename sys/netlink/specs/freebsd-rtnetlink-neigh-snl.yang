@@ -1,0 +1,66 @@
+// SPDX-License-Identifier: BSD-2-Clause
+//
+// Copyright (c) 2026 Pouria Mousavizadeh Tehrani <pouria@FreeBSD.org>
+
+module freebsd-rtnetlink-neigh-snl {
+  yang-version 1.1;
+  namespace "urn:freebsd:yang:freebsd-rtnetlink-neigh-snl";
+  prefix rtneigh-snl;
+
+  import freebsd-netlink-snl {
+    prefix snl;
+  }
+  import freebsd-rtnetlink-neigh {
+    prefix rtneigh;
+  }
+
+  organization
+    "FreeBSD";
+  contact
+    "Pouria Mousavizadeh Tehrani <pouria@FreeBSD.org>";
+  description
+    "The snl(3) parser of the neighbour messages: snl_rtm_neigh_parser
+     and struct snl_parsed_neigh of
+     <netlink/netlink_snl_route_parsers.h>.";
+
+  revision 2026-10-14 {
+    description
+      "Initial revision.";
+  }
+
+  snl:parser snl_rtm_neigh_parser {
+    snl:doc "RTM_<NEW|DEL|GET>NEIGH message parser";
+    snl:struct snl_parsed_neigh;
+    snl:grouping rtneigh:neigh-message;
+    snl:nest freebsd {
+      snl:name _neigh_fbsd_parser;
+    }
+    snl:member ndm_family {
+      snl:field ndm-family;
+    }
+    snl:member ndm_flags {
+      snl:field ndm-flags;
+    }
+    snl:member ndm_state {
+      snl:field ndm-state;
+    }
+    snl:member nda_ifindex {
+      snl:type uint32_t;
+      snl:field ndm-ifindex;
+      snl:attr ifindex;
+    }
+    snl:member nda_probes {
+      snl:attr probes;
+    }
+    snl:member ndaf_next_ts {
+      snl:attr freebsd/next-state-ts;
+    }
+    snl:member nda_dst {
+      snl:attr dst;
+      snl:scope-id nda_ifindex;
+    }
+    snl:member nda_lladdr {
+      snl:attr lladdr;
+    }
+  }
+}

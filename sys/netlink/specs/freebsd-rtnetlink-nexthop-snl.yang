@@ -1,0 +1,77 @@
+// SPDX-License-Identifier: BSD-2-Clause
+//
+// Copyright (c) 2026 Pouria Mousavizadeh Tehrani <pouria@FreeBSD.org>
+
+module freebsd-rtnetlink-nexthop-snl {
+  yang-version 1.1;
+  namespace "urn:freebsd:yang:freebsd-rtnetlink-nexthop-snl";
+  prefix rtnh-snl;
+
+  import freebsd-netlink-snl {
+    prefix snl;
+  }
+  import freebsd-rtnetlink-nexthop {
+    prefix rtnh;
+  }
+
+  organization
+    "FreeBSD";
+  contact
+    "Pouria Mousavizadeh Tehrani <pouria@FreeBSD.org>";
+  description
+    "The snl(3) parser of the nexthop messages: snl_nhmsg_parser and
+     struct snl_parsed_nhop of <netlink/netlink_snl_route_parsers.h>.";
+
+  revision 2026-10-14 {
+    description
+      "Initial revision.";
+  }
+
+  snl:include "netlink/route/nexthop.h";
+
+  snl:parser snl_nhmsg_parser {
+    snl:doc "RTM_<NEW|DEL|GET>NEXTHOP message parser";
+    snl:struct snl_parsed_nhop;
+    snl:grouping rtnh:nexthop-message;
+    snl:nest freebsd {
+      snl:name _nh_fbsd_parser;
+    }
+    snl:member nha_id {
+      snl:attr id;
+    }
+    snl:member nha_blackhole {
+      snl:attr blackhole;
+    }
+    snl:member nha_groups {
+      snl:type uint8_t;
+    }
+    snl:member nhaf_knhops {
+      snl:attr freebsd/knhops;
+    }
+    snl:member nhaf_family {
+      snl:type uint8_t;
+    }
+    snl:member nha_oif {
+      snl:attr oif;
+    }
+    snl:member nha_gw {
+      snl:attr gateway;
+      snl:scope-id nha_oif;
+    }
+    snl:member nh_family {
+      snl:field nh-family;
+    }
+    snl:member nh_protocol {
+      snl:field nh-protocol;
+    }
+    snl:member nhaf_table {
+      snl:attr freebsd/table;
+    }
+    snl:member nhaf_kid {
+      snl:attr freebsd/kid;
+    }
+    snl:member nhaf_aif {
+      snl:attr freebsd/aif;
+    }
+  }
+}

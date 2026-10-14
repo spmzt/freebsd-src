@@ -1,0 +1,225 @@
+// SPDX-License-Identifier: BSD-2-Clause
+//
+// Copyright (c) 2026 Pouria Mousavizadeh Tehrani <pouria@FreeBSD.org>
+
+module freebsd-genetlink-ktest {
+  yang-version 1.1;
+  namespace "urn:freebsd:yang:freebsd-genetlink-ktest";
+  prefix ktest;
+
+  import freebsd-netlink-extensions {
+    prefix nlx;
+  }
+  import freebsd-genetlink {
+    prefix genl;
+  }
+
+  organization
+    "FreeBSD";
+  contact
+    "Pouria Mousavizadeh Tehrani <pouria@FreeBSD.org>";
+  description
+    "The ktest generic netlink family, as <sys/tests/ktest.h>
+     defines it: the kernel's own test framework.  Test modules
+     (ktest_example, ktest_netlink_message_writer ...) register
+     their tests; a program lists them and runs one, receiving the
+     test's log as messages.";
+  reference
+    "tests/sys/netlink/test_snl_generic.c";
+
+  revision 2026-10-14 {
+    description
+      "Initial revision, for FreeBSD 16.0-CURRENT (main at
+       84f790e5b6cc).";
+  }
+
+  nlx:protocol NETLINK_GENERIC;
+  nlx:family ktest;
+  nlx:version 1;
+  nlx:uapi-header "sys/tests/ktest.h";
+
+  typedef command {
+    type enumeration {
+      enum unspec {
+        value 0;
+      }
+      enum list {
+        value 1;
+        description
+          "KTEST_CMD_LIST: list the tests.";
+      }
+      enum run {
+        value 2;
+        description
+          "KTEST_CMD_RUN: run a test.";
+      }
+      enum newtest {
+        value 3;
+        description
+          "KTEST_CMD_NEWTEST: one test, the reply to list.";
+      }
+      enum newmessage {
+        value 4;
+        description
+          "KTEST_CMD_NEWMESSAGE: a log message of a running test.";
+      }
+    }
+    nlx:width 8;
+    nlx:name-prefix "KTEST_CMD_";
+    description
+      "The commands of the family.";
+  }
+
+  grouping timespec {
+    nlx:struct timespec;
+    description
+      "A struct timespec.";
+    leaf tv-sec {
+      type int64;
+      description
+        "Seconds.";
+    }
+    leaf tv-nsec {
+      type int64;
+      description
+        "Nanoseconds.";
+    }
+  }
+
+  grouping test-attrs {
+    nlx:name-prefix "KTEST_ATTR_";
+    description
+      "The attributes of a test, in a list request and reply and
+       in a run request.";
+    leaf mod-name {
+      type string;
+      nlx:attr 1;
+      description
+        "The test module's name.  Sent; read to list or run one
+         module's tests.";
+    }
+    leaf test-name {
+      type string;
+      nlx:attr 2;
+      description
+        "The test's name.  Sent; read to list or run one test.";
+    }
+    leaf test-descr {
+      type string;
+      nlx:attr 3;
+      description
+        "The test's description.  Sent.";
+    }
+    anydata test-meta {
+      nlx:attr 4;
+      description
+        "The test's own parameters, a nest whose attributes the
+         test module defines.  Read when running.";
+    }
+  }
+
+  grouping message-attrs {
+    nlx:name-prefix "KTEST_MSG_ATTR_";
+    description
+      "The attributes of a log message of a running test
+       (KTEST_LOG()).";
+    container ts {
+      nlx:attr 1;
+      description
+        "When it was logged, the uptime.";
+      uses timespec;
+    }
+    leaf func {
+      type string;
+      nlx:attr 2;
+      description
+        "The function that logged it.";
+    }
+    leaf file {
+      type string;
+      nlx:attr 3;
+      description
+        "The source file.";
+    }
+    leaf line {
+      type uint32;
+      nlx:attr 4;
+      description
+        "The line.";
+    }
+    leaf text {
+      type string;
+      nlx:attr 5;
+      description
+        "The message.";
+    }
+    leaf level {
+      type uint8;
+      nlx:attr 6;
+      description
+        "The syslog(3) level, LOG_DEBUG or LOG_ERR.";
+    }
+    anydata meta {
+      nlx:attr 7;
+      description
+        "The test's own data; not sent.";
+    }
+  }
+
+  grouping test-message {
+    nlx:fixed-header genl:genlmsghdr;
+    uses genl:genlmsghdr;
+    description
+      "A list or run request, or a test listed.";
+    uses test-attrs;
+  }
+
+  grouping log-message {
+    nlx:fixed-header genl:genlmsghdr;
+    uses genl:genlmsghdr;
+    description
+      "A log message of a running test.";
+    uses message-attrs;
+  }
+
+  rpc list {
+    nlx:cmd KTEST_CMD_LIST;
+    nlx:do;
+    nlx:dump;
+    description
+      "List the tests of every module, or of mod-name, or the one
+       test-name.";
+    input {
+      uses test-message;
+    }
+    output {
+      nlx:cmd KTEST_CMD_NEWTEST;
+      list test {
+        description
+          "One KTEST_CMD_NEWTEST message per test.";
+        uses test-message;
+      }
+    }
+  }
+
+  rpc run {
+    nlx:cmd KTEST_CMD_RUN;
+    nlx:do;
+    nlx:privilege PRIV_KLD_LOAD;
+    description
+      "Run the test test-name of mod-name with test-meta; the
+       test's log comes as KTEST_CMD_NEWMESSAGE messages before
+       the acknowledgement, whose error is the test's result.";
+    input {
+      uses test-message;
+    }
+    output {
+      nlx:cmd KTEST_CMD_NEWMESSAGE;
+      list message {
+        description
+          "The log messages.";
+        uses log-message;
+      }
+    }
+  }
+}

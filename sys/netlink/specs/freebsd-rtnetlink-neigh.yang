@@ -1,0 +1,421 @@
+// SPDX-License-Identifier: BSD-2-Clause
+//
+// Copyright (c) 2026 Pouria Mousavizadeh Tehrani <pouria@FreeBSD.org>
+
+module freebsd-rtnetlink-neigh {
+  yang-version 1.1;
+  namespace "urn:freebsd:yang:freebsd-rtnetlink-neigh";
+  prefix rtneigh;
+
+  import freebsd-netlink-extensions {
+    prefix nlx;
+  }
+  import freebsd-netlink-types {
+    prefix nlt;
+  }
+  import freebsd-rtnetlink-route {
+    prefix rtroute;
+  }
+
+  organization
+    "FreeBSD";
+  contact
+    "Pouria Mousavizadeh Tehrani <pouria@FreeBSD.org>";
+  description
+    "The neighbour messages of FreeBSD's NETLINK_ROUTE protocol,
+     RTM_NEWNEIGH, RTM_DELNEIGH and RTM_GETNEIGH, as
+     <netlink/route/neigh.h> defines them: the ARP and NDP entries
+     (the link-layer tables, lltable(9)), with the fixed header
+     (struct ndmsg), the NDA_ attributes and FreeBSD's own under
+     NDA_FREEBSD.";
+  reference
+    "netlink(4), arp(8), ndp(8)";
+
+  revision 2026-10-14 {
+    description
+      "Initial revision, for FreeBSD 16.0-CURRENT (main at
+       84f790e5b6cc).";
+  }
+
+  nlx:protocol NETLINK_ROUTE;
+  nlx:uapi-header "netlink/route/neigh.h";
+
+  typedef neighbour-state {
+    type bits {
+      bit incomplete {
+        position 0;
+        description
+          "NUD_INCOMPLETE: no link-layer address yet, resolution
+           in progress.";
+      }
+      bit reachable {
+        position 1;
+        description
+          "NUD_REACHABLE: resolved and recently confirmed.";
+      }
+      bit stale {
+        position 2;
+        description
+          "NUD_STALE: resolved, but stale.";
+      }
+      bit delay {
+        position 3;
+        description
+          "NUD_DELAY: stale, probes delayed.";
+      }
+      bit probe {
+        position 4;
+        description
+          "NUD_PROBE: stale, probes sent.";
+      }
+      bit failed {
+        position 5;
+        description
+          "NUD_FAILED: not used.";
+      }
+      bit noarp {
+        position 6;
+        description
+          "NUD_NOARP: not used.";
+      }
+      bit permanent {
+        position 7;
+        description
+          "NUD_PERMANENT: static, never flushed.";
+      }
+    }
+    nlx:width 16;
+    nlx:name-prefix "NUD_";
+    description
+      "The state of an entry, ndm_state: one bit, NUD_NONE (0)
+       when none applies.";
+  }
+
+  typedef neighbour-flags {
+    type bits {
+      bit use {
+        position 0;
+        description
+          "NTF_USE: not used.";
+      }
+      bit self {
+        position 1;
+        description
+          "NTF_SELF: the interface's own address.";
+      }
+      bit master {
+        position 2;
+        description
+          "NTF_MASTER: not used.";
+      }
+      bit proxy {
+        position 3;
+        description
+          "NTF_PROXY: a proxy entry (published).";
+      }
+      bit ext-learned {
+        position 4;
+        description
+          "NTF_EXT_LEARNED: not used.";
+      }
+      bit offloaded {
+        position 5;
+        description
+          "NTF_OFFLOADED: not used.";
+      }
+      bit sticky {
+        position 6;
+        description
+          "NTF_STICKY: a static entry.";
+      }
+      bit router {
+        position 7;
+        description
+          "NTF_ROUTER: the neighbour said it is a router.";
+      }
+      bit ext-managed {
+        position 8;
+        description
+          "NTF_EXT_MANAGED: not used; the first bit beyond
+           ndm_flags, in flags-ext.";
+      }
+    }
+    nlx:name-prefix "NTF_";
+    description
+      "The flags of an entry: the low byte in ndm_flags, all of
+       them in flags-ext.";
+  }
+
+  grouping ndmsg {
+    nlx:struct ndmsg;
+    description
+      "The fixed header of a neighbour message (struct ndmsg).";
+    leaf ndm-family {
+      type nlt:address-family;
+      description
+        "The family of the entry: inet for ARP, inet6 for NDP; in
+         a dump request, unspec for both.";
+    }
+    leaf ndm-pad1 {
+      type uint8;
+      description
+        "Zero.";
+    }
+    leaf ndm-pad2 {
+      type uint16;
+      description
+        "Zero.";
+    }
+    leaf ndm-ifindex {
+      type int32;
+      description
+        "The interface.  In a dump request, 0 for every
+         interface.";
+    }
+    leaf ndm-state {
+      type neighbour-state;
+      description
+        "The entry's state.";
+    }
+    leaf ndm-flags {
+      type neighbour-flags;
+      nlx:width 8;
+      description
+        "The low byte of the entry's flags.";
+    }
+    leaf ndm-type {
+      type rtroute:route-type;
+      description
+        "Not used, 0.";
+    }
+  }
+
+  grouping nda-cacheinfo {
+    nlx:struct nda_cacheinfo;
+    description
+      "The timing of an entry (struct nda_cacheinfo).";
+    leaf ndm-confirmed {
+      type uint32;
+      description
+        "Seconds since the neighbour was heard from; not
+         provided, 0.";
+    }
+    leaf ndm-used {
+      type uint32;
+      description
+        "Seconds since the entry was used; not provided, 0.";
+    }
+    leaf ndm-updated {
+      type uint32;
+      description
+        "Seconds since the state changed; not provided, 0.";
+    }
+    leaf ndm-refcnt {
+      type uint32;
+      description
+        "The references the entry holds.";
+    }
+  }
+
+  grouping neigh-freebsd-attrs {
+    nlx:name-prefix "NDAF_";
+    description
+      "NDA_FREEBSD: what FreeBSD has that Linux does not.";
+    leaf next-state-ts {
+      type uint32;
+      nlx:attr 1;
+      description
+        "When the entry moves to its next state, in seconds of
+         time(3); 0 when it does not expire.  Always sent; read and
+         ignored.";
+    }
+  }
+
+  grouping neigh-attrs {
+    nlx:name-prefix "NDA_";
+    description
+      "The attributes of a neighbour message.";
+    leaf dst {
+      type nlt:ip-address;
+      nlx:attr 1;
+      description
+        "The neighbour's IP address.  Always sent; read in every
+         request.";
+    }
+    leaf lladdr {
+      type nlt:link-address;
+      nlx:attr 2;
+      description
+        "The neighbour's link-layer address.  Sent when resolved;
+         read when creating.";
+    }
+    container cacheinfo {
+      nlx:attr 3;
+      description
+        "The timing.  Always sent.";
+      uses nda-cacheinfo;
+    }
+    leaf probes {
+      type uint32;
+      nlx:attr 4;
+      description
+        "Probes sent without an answer.  Always sent.";
+    }
+    leaf vlan {
+      type uint16;
+      nlx:attr 5;
+      description
+        "Not supported.";
+    }
+    leaf port {
+      type uint16;
+      nlx:attr 6;
+      description
+        "Not supported.";
+    }
+    leaf vni {
+      type uint32;
+      nlx:attr 7;
+      description
+        "Not supported.";
+    }
+    leaf ifindex {
+      type nlt:ifindex;
+      nlx:attr 8;
+      description
+        "The interface, read in a request instead of
+         ndm-ifindex.";
+    }
+    leaf master {
+      type nlt:ifindex;
+      nlx:attr 9;
+      description
+        "Not supported.";
+    }
+    leaf link-netnsid {
+      type int32;
+      nlx:attr 10;
+      description
+        "Not supported.";
+    }
+    leaf src-vni {
+      type uint32;
+      nlx:attr 11;
+      description
+        "Not supported.";
+    }
+    leaf protocol {
+      type uint8;
+      nlx:attr 12;
+      description
+        "Not supported.";
+    }
+    leaf nh-id {
+      type uint32;
+      nlx:attr 13;
+      description
+        "Not supported.";
+    }
+    leaf fdb-ext-attrs {
+      type binary;
+      nlx:attr 14;
+      description
+        "Not supported.";
+    }
+    leaf flags-ext {
+      type neighbour-flags;
+      nlx:attr 15;
+      description
+        "The entry's flags, all of them; read in a request instead
+         of ndm-flags.";
+    }
+    leaf ndm-state-mask {
+      type neighbour-state;
+      nlx:width 16;
+      nlx:attr 16;
+      description
+        "Not supported.";
+    }
+    leaf ndm-flags-mask {
+      type neighbour-flags;
+      nlx:width 8;
+      nlx:attr 17;
+      description
+        "Not supported.";
+    }
+    container freebsd {
+      nlx:attr 18;
+      description
+        "FreeBSD's own.  Always sent.";
+      uses neigh-freebsd-attrs;
+    }
+  }
+
+  grouping neigh-message {
+    nlx:fixed-header ndmsg;
+    description
+      "A neighbour message: the fixed header, then the
+       attributes.";
+    uses ndmsg;
+    uses neigh-attrs;
+  }
+
+  rpc getneigh {
+    nlx:msg-type RTM_GETNEIGH;
+    nlx:dump;
+    description
+      "List the entries of the family ndm-family, or of both, of
+       the interface ndm-ifindex, or of every interface.";
+    input {
+      uses neigh-message;
+    }
+    output {
+      list neigh {
+        description
+          "One RTM_NEWNEIGH message per entry.";
+        uses neigh-message;
+      }
+    }
+  }
+
+  rpc newneigh {
+    nlx:msg-type RTM_NEWNEIGH;
+    nlx:do;
+    description
+      "Create a static entry for dst with lladdr on the interface
+       ndm-ifindex, as arp(8) -s and ndp(8) -s do; with
+       NLM_F_REPLACE, replace an existing one, with NLM_F_EXCL,
+       fail if one exists (PRIV_NET_ROUTE).  The state is
+       permanent, the flags may be proxy or router.";
+    input {
+      uses neigh-message;
+    }
+  }
+
+  rpc delneigh {
+    nlx:msg-type RTM_DELNEIGH;
+    nlx:do;
+    description
+      "Delete the entry for dst on the interface ndm-ifindex
+       (PRIV_NET_ROUTE).";
+    input {
+      uses neigh-message;
+    }
+  }
+
+  notification neigh-new {
+    nlx:msg-type RTM_NEWNEIGH;
+    nlx:group RTNLGRP_NEIGH;
+    description
+      "An entry was created or resolved.";
+    uses neigh-message;
+  }
+
+  notification neigh-del {
+    nlx:msg-type RTM_DELNEIGH;
+    nlx:group RTNLGRP_NEIGH;
+    description
+      "An entry was deleted or expired.";
+    uses neigh-message;
+  }
+}

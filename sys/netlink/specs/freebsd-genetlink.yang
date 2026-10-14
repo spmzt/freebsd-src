@@ -1,0 +1,328 @@
+// SPDX-License-Identifier: BSD-2-Clause
+//
+// Copyright (c) 2026 Pouria Mousavizadeh Tehrani <pouria@FreeBSD.org>
+
+module freebsd-genetlink {
+  yang-version 1.1;
+  namespace "urn:freebsd:yang:freebsd-genetlink";
+  prefix genl;
+
+  import freebsd-netlink-extensions {
+    prefix nlx;
+  }
+
+  organization
+    "FreeBSD";
+  contact
+    "Pouria Mousavizadeh Tehrani <pouria@FreeBSD.org>";
+  description
+    "FreeBSD's generic netlink, NETLINK_GENERIC, as
+     <netlink/netlink_generic.h> defines it: the header every
+     family's message carries after the netlink header (struct
+     genlmsghdr), and the controller family nlctrl, through which
+     a program learns the message type a family was given and the
+     numbers of its multicast groups.
+
+     Families are registered at run time (genl_register_family(9))
+     and get a message type from GENL_MIN_ID (16, nlctrl's own) to
+     GENL_MAX_ID (1023); each family has its own module:
+     freebsd-genetlink-nlsysevent, -ktest, -carp, -pflow, -pfctl
+     and -rpc.";
+  reference
+    "genetlink(4), snl(3)";
+
+  revision 2026-10-14 {
+    description
+      "Initial revision, for FreeBSD 16.0-CURRENT (main at
+       84f790e5b6cc).";
+  }
+
+  nlx:protocol NETLINK_GENERIC;
+  nlx:family nlctrl;
+  nlx:uapi-header "netlink/netlink_generic.h";
+
+  typedef command {
+    type enumeration {
+      enum unspec {
+        value 0;
+      }
+      enum newfamily {
+        value 1;
+        description
+          "CTRL_CMD_NEWFAMILY: the reply to getfamily, and the
+           notice of a family registered.";
+      }
+      enum delfamily {
+        value 2;
+        description
+          "CTRL_CMD_DELFAMILY: the notice of a family
+           unregistered.";
+      }
+      enum getfamily {
+        value 3;
+        description
+          "CTRL_CMD_GETFAMILY: list the families, or one by name.";
+      }
+      enum newops {
+        value 4;
+        description
+          "Not supported.";
+      }
+      enum delops {
+        value 5;
+        description
+          "Not supported.";
+      }
+      enum getops {
+        value 6;
+        description
+          "Not supported.";
+      }
+      enum newmcast-grp {
+        value 7;
+        description
+          "Not supported.";
+      }
+      enum delmcast-grp {
+        value 8;
+        description
+          "Not supported.";
+      }
+      enum getmcast-grp {
+        value 9;
+        description
+          "Not supported.";
+      }
+      enum getpolicy {
+        value 10;
+        description
+          "Not supported.";
+      }
+    }
+    nlx:width 8;
+    nlx:name-prefix "CTRL_CMD_";
+    description
+      "The commands of the nlctrl family.";
+  }
+
+  typedef operation-flags {
+    type bits {
+      bit admin-perm {
+        position 0;
+        description
+          "GENL_ADMIN_PERM: the command needs a privilege.";
+      }
+      bit cmd-cap-do {
+        position 1;
+        description
+          "GENL_CMD_CAP_DO: the command answers a request for one
+           object.";
+      }
+      bit cmd-cap-dump {
+        position 2;
+        description
+          "GENL_CMD_CAP_DUMP: the command answers a dump.";
+      }
+      bit cmd-cap-haspol {
+        position 3;
+        description
+          "GENL_CMD_CAP_HASPOL: the command has a validation
+           policy.";
+      }
+      bit uns-admin-perm {
+        position 4;
+        description
+          "GENL_UNS_ADMIN_PERM: not used.";
+      }
+    }
+    nlx:name-prefix "GENL_";
+    description
+      "What a family's command can do, CTRL_ATTR_OP_FLAGS.";
+  }
+
+  grouping genlmsghdr {
+    nlx:struct genlmsghdr;
+    description
+      "The fixed header of every generic netlink message (struct
+       genlmsghdr), 4 bytes (GENL_HDRLEN).";
+    leaf genl-cmd {
+      type uint8;
+      nlx:c-name cmd;
+      description
+        "The command, of the family's own.";
+    }
+    leaf genl-version {
+      type uint8;
+      nlx:c-name version;
+      description
+        "The version of the command's interface; 0 unless the
+         family says otherwise.";
+    }
+    leaf genl-reserved {
+      type uint16;
+      nlx:c-name reserved;
+      description
+        "Zero.";
+    }
+  }
+
+  grouping operation-attrs {
+    nlx:name-prefix "CTRL_ATTR_OP_";
+    description
+      "One command of a family, an entry of CTRL_ATTR_OPS.";
+    leaf id {
+      type uint32;
+      nlx:attr 1;
+      description
+        "The command's number.";
+    }
+    leaf flags {
+      type operation-flags;
+      nlx:attr 2;
+      description
+        "What it can do, with admin-perm when it needs a
+         privilege.";
+    }
+  }
+
+  grouping mcast-group-attrs {
+    nlx:name-prefix "CTRL_ATTR_MCAST_GRP_";
+    description
+      "One multicast group of a family, an entry of
+       CTRL_ATTR_MCAST_GROUPS.";
+    leaf name {
+      type string;
+      nlx:attr 1;
+      description
+        "The group's name, as the family registered it.";
+    }
+    leaf id {
+      type uint32;
+      nlx:attr 2;
+      description
+        "The group's number, for NETLINK_ADD_MEMBERSHIP.";
+    }
+  }
+
+  grouping ctrl-attrs {
+    nlx:name-prefix "CTRL_ATTR_";
+    description
+      "The attributes of the nlctrl family.";
+    leaf family-id {
+      type uint16;
+      nlx:attr 1;
+      description
+        "The message type the family was given.  Sent; read as a
+         filter.";
+    }
+    leaf family-name {
+      type string {
+        length "1..15";
+      }
+      nlx:attr 2;
+      description
+        "The family's name, at most GENL_NAMSIZ - 1 characters.
+         Sent; read to get one family.";
+    }
+    leaf version {
+      type uint32;
+      nlx:attr 3;
+      description
+        "The family's version.  Sent.";
+    }
+    leaf hdrsize {
+      type uint32;
+      nlx:attr 4;
+      description
+        "The size of the family's own header after genlmsghdr;
+         0 for every FreeBSD family.  Sent.";
+    }
+    leaf maxattr {
+      type uint32;
+      nlx:attr 5;
+      description
+        "The highest attribute number the family registered.
+         Sent.";
+    }
+    list ops {
+      nlx:attr 6;
+      nlx:array;
+      description
+        "The family's commands, a nest of nests numbered from 1.
+         Sent when the family has any.";
+      uses operation-attrs;
+    }
+    list mcast-groups {
+      nlx:attr 7;
+      nlx:array;
+      description
+        "The family's multicast groups, a nest of nests numbered
+         from 1.  Sent when the family has any.";
+      uses mcast-group-attrs;
+    }
+    leaf policy {
+      type binary;
+      nlx:attr 8;
+      description
+        "Not supported.";
+    }
+    leaf op-policy {
+      type binary;
+      nlx:attr 9;
+      description
+        "Not supported.";
+    }
+    leaf op {
+      type uint32;
+      nlx:attr 10;
+      description
+        "Not supported.";
+    }
+  }
+
+  grouping ctrl-message {
+    nlx:fixed-header genlmsghdr;
+    uses genlmsghdr;
+    description
+      "A message of the nlctrl family.";
+    uses ctrl-attrs;
+  }
+
+  rpc getfamily {
+    nlx:cmd CTRL_CMD_GETFAMILY;
+    nlx:do;
+    nlx:dump;
+    description
+      "Get the family named family-name, or, with NLM_F_DUMP,
+       list them all.  snl_get_genl_family(3) is this.";
+    input {
+      uses ctrl-message;
+    }
+    output {
+      nlx:cmd CTRL_CMD_NEWFAMILY;
+      list family {
+        description
+          "One CTRL_CMD_NEWFAMILY message per family.";
+        uses ctrl-message;
+      }
+    }
+  }
+
+  notification family-new {
+    nlx:cmd CTRL_CMD_NEWFAMILY;
+    nlx:group notify;
+    description
+      "A family was registered: the family as getfamily reports
+       it, on nlctrl's group 'notify'.";
+    uses ctrl-message;
+  }
+
+  notification family-del {
+    nlx:cmd CTRL_CMD_DELFAMILY;
+    nlx:group notify;
+    description
+      "A family was unregistered: its family-id and family-name,
+       on nlctrl's group 'notify'.";
+    uses ctrl-message;
+  }
+}

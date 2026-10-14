@@ -1,0 +1,347 @@
+// SPDX-License-Identifier: BSD-2-Clause
+//
+// Copyright (c) 2026 Pouria Mousavizadeh Tehrani <pouria@FreeBSD.org>
+
+module freebsd-rtnetlink-addr {
+  yang-version 1.1;
+  namespace "urn:freebsd:yang:freebsd-rtnetlink-addr";
+  prefix rtaddr;
+
+  import freebsd-netlink-extensions {
+    prefix nlx;
+  }
+  import freebsd-netlink-types {
+    prefix nlt;
+  }
+  import freebsd-rtnetlink-route {
+    prefix rtroute;
+  }
+
+  organization
+    "FreeBSD";
+  contact
+    "Pouria Mousavizadeh Tehrani <pouria@FreeBSD.org>";
+  description
+    "The interface address messages of FreeBSD's NETLINK_ROUTE
+     protocol, RTM_NEWADDR, RTM_DELADDR and RTM_GETADDR, as
+     <netlink/route/ifaddrs.h> defines them: the fixed header
+     (struct ifaddrmsg), the IFA_ attributes and FreeBSD's own
+     under IFA_FREEBSD.";
+  reference
+    "netlink(4), ifconfig(8)";
+
+  revision 2026-10-14 {
+    description
+      "Initial revision, for FreeBSD 16.0-CURRENT (main at
+       84f790e5b6cc).";
+  }
+
+  nlx:protocol NETLINK_ROUTE;
+  nlx:uapi-header "netlink/route/ifaddrs.h";
+
+  typedef address-flags {
+    type bits {
+      bit secondary {
+        position 0;
+        description
+          "IFA_F_SECONDARY, IFA_F_TEMPORARY: an IPv6 temporary
+           address (IN6_IFF_TEMPORARY).";
+      }
+      bit nodad {
+        position 1;
+        description
+          "IFA_F_NODAD: no duplicate address detection
+           (IN6_IFF_NODAD).";
+      }
+      bit optimistic {
+        position 2;
+        description
+          "IFA_F_OPTIMISTIC: not used.";
+      }
+      bit dadfailed {
+        position 3;
+        description
+          "IFA_F_DADFAILED: a duplicate was found
+           (IN6_IFF_DUPLICATED).";
+      }
+      bit homeaddress {
+        position 4;
+        description
+          "IFA_F_HOMEADDRESS: not used.";
+      }
+      bit deprecated {
+        position 5;
+        description
+          "IFA_F_DEPRECATED: past its preferred lifetime
+           (IN6_IFF_DEPRECATED).";
+      }
+      bit tentative {
+        position 6;
+        description
+          "IFA_F_TENTATIVE: duplicate address detection is running
+           (IN6_IFF_TENTATIVE).";
+      }
+      bit permanent {
+        position 7;
+        description
+          "IFA_F_PERMANENT: neither autoconfigured nor temporary.";
+      }
+      bit managetempaddr {
+        position 8;
+        description
+          "IFA_F_MANAGETEMPADDR: not used.";
+      }
+      bit noprefixroute {
+        position 9;
+        description
+          "IFA_F_NOPREFIXROUTE: not used.";
+      }
+      bit mcautojoin {
+        position 10;
+        description
+          "IFA_F_MCAUTOJOIN: not used.";
+      }
+      bit stable-privacy {
+        position 11;
+        description
+          "IFA_F_STABLE_PRIVACY: not used.";
+      }
+    }
+    nlx:name-prefix "IFA_F_";
+    description
+      "The flags of an address, IFA_F_*, translated from and to the
+       IPv6 address flags IN6_IFF_* of <netinet6/in6_var.h>; an IPv4
+       address has none.  The low byte is ifa-flags, the whole
+       flags.";
+  }
+
+  grouping ifaddrmsg {
+    nlx:struct ifaddrmsg;
+    description
+      "The fixed header of an address message (struct ifaddrmsg).";
+    leaf ifa-family {
+      type nlt:address-family;
+      description
+        "The address family, inet or inet6; in a dump request,
+         unspec for both.";
+    }
+    leaf ifa-prefixlen {
+      type uint8;
+      description
+        "The prefix length of the address's network.";
+    }
+    leaf ifa-flags {
+      type address-flags;
+      nlx:width 8;
+      description
+        "The low byte of the flags; the kernel sends 0 and the
+         flags attribute.";
+    }
+    leaf ifa-scope {
+      type rtroute:scope;
+      description
+        "The address's scope: host for a loopback address, link
+         for a link-local one, universe otherwise.";
+    }
+    leaf ifa-index {
+      type nlt:ifindex;
+      description
+        "The interface.  In a dump request, 0 for every interface.";
+    }
+  }
+
+  grouping ifa-cacheinfo {
+    nlx:struct ifa_cacheinfo;
+    description
+      "The lifetimes of an address (struct ifa_cacheinfo).";
+    leaf ifa-prefered {
+      type uint32;
+      description
+        "Seconds left of the preferred lifetime, 0xffffffff for
+         ever.";
+    }
+    leaf ifa-valid {
+      type uint32;
+      description
+        "Seconds left of the valid lifetime, 0xffffffff for ever.";
+    }
+    leaf cstamp {
+      type uint32;
+      description
+        "The creation time, in milliseconds since boot.";
+    }
+    leaf tstamp {
+      type uint32;
+      description
+        "The last update, in milliseconds since boot.";
+    }
+  }
+
+  grouping addr-freebsd-attrs {
+    nlx:name-prefix "IFAF_";
+    description
+      "IFA_FREEBSD: what FreeBSD has that Linux does not.";
+    leaf vhid {
+      type uint32;
+      nlx:attr 1;
+      description
+        "The carp(4) virtual host the address belongs to.  Sent
+         when the address has one; read when adding.";
+    }
+    leaf flags {
+      type uint32;
+      nlx:attr 2;
+      description
+        "The IPv6 address flags, IN6_IFF_* of <netinet6/in6_var.h>,
+         as they are.  Sent for an IPv6 address; read when adding,
+         added to those of flags.";
+    }
+  }
+
+  grouping addr-attrs {
+    nlx:name-prefix "IFA_";
+    description
+      "The attributes of an address message.";
+    leaf address {
+      type nlt:ip-address;
+      nlx:attr 1;
+      description
+        "The address of the prefix: the interface's own, or the
+         peer's on a point-to-point interface.  Always sent; read
+         when adding or deleting.";
+    }
+    leaf local {
+      type nlt:ip-address;
+      nlx:attr 2;
+      description
+        "The interface's own address, on a point-to-point
+         interface.  Sent then; read when adding or deleting.";
+    }
+    leaf label {
+      type nlt:ifname;
+      nlx:attr 3;
+      description
+        "The interface's name.  Always sent.";
+    }
+    leaf broadcast {
+      type nlt:ip-address;
+      nlx:attr 4;
+      description
+        "The broadcast address of an IPv4 address on a broadcast
+         interface.  Sent then; read when adding.";
+    }
+    leaf anycast {
+      type nlt:ip-address;
+      nlx:attr 5;
+      description
+        "Not supported.";
+    }
+    container cacheinfo {
+      nlx:attr 6;
+      description
+        "The lifetimes.  Sent for an IPv6 address; read when
+         adding one.";
+      uses ifa-cacheinfo;
+    }
+    leaf multicast {
+      type nlt:ip-address;
+      nlx:attr 7;
+      description
+        "Not supported.";
+    }
+    leaf flags {
+      type address-flags;
+      nlx:attr 8;
+      description
+        "The flags.  Always sent; read when adding an IPv6
+         address.";
+    }
+    leaf rt-priority {
+      type uint32;
+      nlx:attr 9;
+      description
+        "Not supported.";
+    }
+    leaf target-netnsid {
+      type int32;
+      nlx:attr 10;
+      description
+        "Not supported.";
+    }
+    container freebsd {
+      nlx:attr 11;
+      description
+        "FreeBSD's own.";
+      uses addr-freebsd-attrs;
+    }
+  }
+
+  grouping addr-message {
+    nlx:fixed-header ifaddrmsg;
+    description
+      "An address message: the fixed header, then the attributes.";
+    uses ifaddrmsg;
+    uses addr-attrs;
+  }
+
+  rpc getaddr {
+    nlx:msg-type RTM_GETADDR;
+    nlx:dump;
+    description
+      "List the addresses of the family ifa-family, or of both, of
+       the interface ifa-index, or of every interface.  A non-vnet
+       jail may ask.";
+    input {
+      uses addr-message;
+    }
+    output {
+      list addr {
+        description
+          "One RTM_NEWADDR message per address.";
+        uses addr-message;
+      }
+    }
+  }
+
+  rpc newaddr {
+    nlx:msg-type RTM_NEWADDR;
+    nlx:do;
+    description
+      "Add address/ifa-prefixlen to the interface ifa-index, with
+       local as the interface's own and address the peer's on a
+       point-to-point interface, with broadcast, the lifetimes,
+       the flags and the vhid (PRIV_NET_ADDIFADDR).";
+    input {
+      uses addr-message;
+    }
+  }
+
+  rpc deladdr {
+    nlx:msg-type RTM_DELADDR;
+    nlx:do;
+    description
+      "Delete address (local on a point-to-point interface) from
+       the interface ifa-index (PRIV_NET_DELIFADDR).";
+    input {
+      uses addr-message;
+    }
+  }
+
+  notification addr-new {
+    nlx:msg-type RTM_NEWADDR;
+    nlx:group RTNLGRP_IPV4_IFADDR;
+    description
+      "An address was added, by any means; on RTNLGRP_IPV4_IFADDR
+       or RTNLGRP_IPV6_IFADDR by its family.";
+    uses addr-message;
+  }
+
+  notification addr-del {
+    nlx:msg-type RTM_DELADDR;
+    nlx:group RTNLGRP_IPV4_IFADDR;
+    description
+      "An address was deleted; on RTNLGRP_IPV4_IFADDR or
+       RTNLGRP_IPV6_IFADDR by its family.";
+    uses addr-message;
+  }
+}

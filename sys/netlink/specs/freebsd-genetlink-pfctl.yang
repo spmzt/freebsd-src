@@ -1,0 +1,3251 @@
+// SPDX-License-Identifier: BSD-2-Clause
+//
+// Copyright (c) 2026 Pouria Mousavizadeh Tehrani <pouria@FreeBSD.org>
+
+module freebsd-genetlink-pfctl {
+  yang-version 1.1;
+  namespace "urn:freebsd:yang:freebsd-genetlink-pfctl";
+  prefix pfctl;
+
+  import freebsd-netlink-extensions {
+    prefix nlx;
+  }
+  import freebsd-netlink-types {
+    prefix nlt;
+  }
+  import freebsd-genetlink {
+    prefix genl;
+  }
+
+  organization
+    "FreeBSD";
+  contact
+    "Pouria Mousavizadeh Tehrani <pouria@FreeBSD.org>";
+  description
+    "The pfctl generic netlink family, as <netpfil/pf/pf_nl.h>
+     defines it: the control interface of pf(4) that libpfctl(3)
+     and pfctl(8) use, which replaced the DIOC* ioctls of
+     /dev/pf for the states, the rules, the tables, the source
+     nodes, the limiters, the OS fingerprints and the status.
+
+     Each command needs PRIV_NETINET_PF and is refused from a
+     kern.securelevel of 3 (the ones that change the firewall) or
+     4 (the ones that read it).  The attribute sets are named
+     after their enumerations in the header.";
+  reference
+    "pf(4), pfctl(8), libpfctl(3)";
+
+  revision 2026-10-14 {
+    description
+      "Initial revision, for FreeBSD 16.0-CURRENT (main at
+       84f790e5b6cc).";
+  }
+
+  nlx:protocol NETLINK_GENERIC;
+  nlx:family pfctl;
+  nlx:version 2;
+  nlx:uapi-header "netpfil/pf/pf_nl.h";
+
+  typedef command {
+    type enumeration {
+      enum unspec {
+        value 0;
+      }
+      enum getstates {
+        value 1;
+      }
+      enum getcreators {
+        value 2;
+      }
+      enum start {
+        value 3;
+      }
+      enum stop {
+        value 4;
+      }
+      enum addrule {
+        value 5;
+      }
+      enum getrules {
+        value 6;
+      }
+      enum getrule {
+        value 7;
+      }
+      enum clrstates {
+        value 8;
+      }
+      enum killstates {
+        value 9;
+      }
+      enum set-statusif {
+        value 10;
+      }
+      enum get-status {
+        value 11;
+      }
+      enum clear-status {
+        value 12;
+      }
+      enum natlook {
+        value 13;
+      }
+      enum set-debug {
+        value 14;
+      }
+      enum set-timeout {
+        value 15;
+      }
+      enum get-timeout {
+        value 16;
+      }
+      enum set-limit {
+        value 17;
+      }
+      enum get-limit {
+        value 18;
+      }
+      enum begin-addrs {
+        value 19;
+      }
+      enum add-addr {
+        value 20;
+      }
+      enum get-addrs {
+        value 21;
+      }
+      enum get-addr {
+        value 22;
+      }
+      enum get-rulesets {
+        value 23;
+      }
+      enum get-ruleset {
+        value 24;
+      }
+      enum get-srcnodes {
+        value 25;
+      }
+      enum clear-tables {
+        value 26;
+      }
+      enum add-table {
+        value 27;
+      }
+      enum del-table {
+        value 28;
+      }
+      enum get-tstats {
+        value 29;
+      }
+      enum clr-tstats {
+        value 30;
+      }
+      enum clr-addrs {
+        value 31;
+      }
+      enum table-add-addr {
+        value 32;
+      }
+      enum table-del-addr {
+        value 33;
+      }
+      enum table-set-addr {
+        value 34;
+      }
+      enum table-get-addr {
+        value 35;
+      }
+      enum table-get-astats {
+        value 36;
+      }
+      enum table-clear-astats {
+        value 37;
+      }
+      enum state-limiter-add {
+        value 38;
+      }
+      enum state-limiter-get {
+        value 39;
+      }
+      enum state-limiter-nget {
+        value 40;
+      }
+      enum source-limiter-add {
+        value 41;
+      }
+      enum source-limiter-get {
+        value 42;
+      }
+      enum source-limiter-nget {
+        value 43;
+      }
+      enum source-get {
+        value 44;
+      }
+      enum source-nget {
+        value 45;
+      }
+      enum source-clear {
+        value 46;
+      }
+      enum table-test-addrs {
+        value 47;
+      }
+      enum ina-define {
+        value 48;
+      }
+      enum osfp-flush {
+        value 49;
+      }
+      enum osfp-get {
+        value 50;
+      }
+      enum osfp-add {
+        value 51;
+      }
+    }
+    nlx:width 8;
+    nlx:name-prefix "PFNL_CMD_";
+    description
+      "The commands of the family, PFNL_CMD_*; each is an rpc of
+       this module.";
+  }
+
+  typedef direction {
+    type enumeration {
+      enum inout {
+        value 0;
+      }
+      enum in {
+        value 1;
+      }
+      enum out {
+        value 2;
+      }
+    }
+    nlx:width 8;
+    nlx:name-prefix "PF_";
+    description
+      "A direction, PF_INOUT, PF_IN or PF_OUT.";
+  }
+
+  typedef action {
+    type enumeration {
+      enum pass {
+        value 0;
+      }
+      enum drop {
+        value 1;
+      }
+      enum scrub {
+        value 2;
+      }
+      enum noscrub {
+        value 3;
+      }
+      enum nat {
+        value 4;
+      }
+      enum nonat {
+        value 5;
+      }
+      enum binat {
+        value 6;
+      }
+      enum nobinat {
+        value 7;
+      }
+      enum rdr {
+        value 8;
+      }
+      enum nordr {
+        value 9;
+      }
+      enum synproxy-drop {
+        value 10;
+      }
+      enum defer {
+        value 11;
+      }
+      enum match {
+        value 12;
+      }
+      enum afrt {
+        value 13;
+      }
+      enum rt {
+        value 14;
+      }
+    }
+    nlx:width 8;
+    nlx:name-prefix "PF_";
+    description
+      "A rule's action, PF_PASS ... PF_RT; also the ruleset a
+       rule belongs to in a getrules request.";
+  }
+
+  typedef port-op {
+    type enumeration {
+      enum none {
+        value 0;
+      }
+      enum irg {
+        value 1;
+        description
+          "Inclusive range.";
+      }
+      enum eq {
+        value 2;
+      }
+      enum ne {
+        value 3;
+      }
+      enum lt {
+        value 4;
+      }
+      enum le {
+        value 5;
+      }
+      enum gt {
+        value 6;
+      }
+      enum ge {
+        value 7;
+      }
+      enum xrg {
+        value 8;
+        description
+          "Exclusive range.";
+      }
+      enum rrg {
+        value 9;
+        description
+          "Range.";
+      }
+    }
+    nlx:width 8;
+    nlx:name-prefix "PF_OP_";
+    description
+      "A comparison of ports, users or groups, PF_OP_*.";
+  }
+
+  typedef addr-type {
+    type enumeration {
+      enum addrmask {
+        value 0;
+        description
+          "An address and mask.";
+      }
+      enum noroute {
+        value 1;
+      }
+      enum dyniftl {
+        value 2;
+        description
+          "An interface's addresses, by name.";
+      }
+      enum table {
+        value 3;
+        description
+          "A table, by name.";
+      }
+      enum urpffailed {
+        value 4;
+      }
+      enum range {
+        value 5;
+        description
+          "A range of addresses.";
+      }
+      enum none {
+        value 6;
+      }
+    }
+    nlx:width 8;
+    nlx:name-prefix "PF_ADDR_";
+    description
+      "What an address in a rule stands for, PF_ADDR_*.";
+  }
+
+  grouping state-key-attrs {
+    nlx:name-prefix "PF_STK_";
+    description
+      "A state's key on one side (pfstate_key_type_t).";
+    leaf addr0 {
+      type nlt:ip-address;
+      nlx:attr 1;
+    }
+    leaf addr1 {
+      type nlt:ip-address;
+      nlx:attr 2;
+    }
+    leaf port0 {
+      type uint16;
+      nlx:attr 3;
+    }
+    leaf port1 {
+      type uint16;
+      nlx:attr 4;
+    }
+    leaf af {
+      type nlt:address-family;
+      nlx:attr 5;
+    }
+    leaf proto {
+      type uint16;
+      nlx:attr 6;
+      description
+        "The IP protocol.";
+    }
+  }
+
+  grouping state-peer-attrs {
+    nlx:name-prefix "PF_STP_";
+    description
+      "A state's TCP peer (pfstate_peer_type_t).";
+    leaf pfss-flags {
+      type uint16;
+      nlx:attr 1;
+      description
+        "Scrub flags, when scrubbed.";
+    }
+    leaf pfss-ttl {
+      type uint8;
+      nlx:attr 2;
+    }
+    leaf scrub-flag {
+      type uint8;
+      nlx:attr 3;
+      description
+        "PF_SCRUB_FLAG_VALID when scrubbed.";
+    }
+    leaf pfss-ts-mod {
+      type uint32;
+      nlx:attr 4;
+    }
+    leaf seqlo {
+      type uint32;
+      nlx:attr 5;
+    }
+    leaf seqhi {
+      type uint32;
+      nlx:attr 6;
+    }
+    leaf seqdiff {
+      type uint32;
+      nlx:attr 7;
+    }
+    leaf max-win {
+      type uint16;
+      nlx:attr 8;
+    }
+    leaf mss {
+      type uint16;
+      nlx:attr 9;
+    }
+    leaf state {
+      type uint8;
+      nlx:attr 10;
+      description
+        "The TCP state, TCPS_*.";
+    }
+    leaf wscale {
+      type uint8;
+      nlx:attr 11;
+    }
+  }
+
+  grouping addr-attrs {
+    nlx:name-prefix "PF_AT_";
+    description
+      "An address of a rule (struct pf_addr_wrap,
+       pf_addr_type_t).";
+    leaf addr {
+      type nlt:in6-addr;
+      nlx:attr 1;
+      description
+        "The address, an IPv4 one in the first four bytes.";
+    }
+    leaf mask {
+      type nlt:in6-addr;
+      nlx:attr 2;
+    }
+    leaf ifname {
+      type nlt:ifname;
+      nlx:attr 3;
+      description
+        "The interface, for a dyniftl address.";
+    }
+    leaf tablename {
+      type string {
+        length "0..31";
+      }
+      nlx:attr 4;
+      description
+        "The table, for a table address.";
+    }
+    leaf type {
+      type addr-type;
+      nlx:attr 5;
+    }
+    leaf iflags {
+      type uint8;
+      nlx:attr 6;
+      description
+        "The interface flags of a dyniftl address, PFI_AFLAG_*.";
+    }
+    leaf tblcnt {
+      type uint32;
+      nlx:attr 7;
+      description
+        "Sent: the addresses in the table.";
+    }
+    leaf dyncnt {
+      type uint32;
+      nlx:attr 8;
+      description
+        "Sent: the addresses of the interface.";
+    }
+  }
+
+  grouping rule-addr-attrs {
+    nlx:name-prefix "PF_RAT_";
+    description
+      "A rule's source or destination (struct pf_rule_addr,
+       pfrule_addr_type_t).";
+    container addr {
+      nlx:attr 1;
+      uses addr-attrs;
+    }
+    leaf src-port {
+      type uint16;
+      nlx:attr 2;
+    }
+    leaf dst-port {
+      type uint16;
+      nlx:attr 3;
+    }
+    leaf neg {
+      type uint8;
+      nlx:attr 4;
+      description
+        "Negated.";
+    }
+    leaf op {
+      type port-op;
+      nlx:attr 5;
+    }
+  }
+
+  grouping labels-attrs {
+    nlx:name-prefix "PF_LT_";
+    description
+      "A rule's labels (pf_labels_type_t).";
+    leaf-list label {
+      type string {
+        length "0..63";
+      }
+      nlx:attr 1;
+      description
+        "One label each, at most 5.";
+    }
+  }
+
+  grouping mape-portset-attrs {
+    nlx:name-prefix "PF_MET_";
+    description
+      "A pool's MAP-E port set (pf_mape_portset_type_t).";
+    leaf offset {
+      type uint8;
+      nlx:attr 1;
+    }
+    leaf psid-len {
+      type uint8;
+      nlx:attr 2;
+    }
+    leaf psid {
+      type uint16;
+      nlx:attr 3;
+    }
+  }
+
+  grouping pool-attrs {
+    nlx:name-prefix "PF_PT_";
+    description
+      "A rule's address pool (struct pf_kpool, pf_rpool_type_t).";
+    leaf key {
+      type binary {
+        length "16";
+      }
+      nlx:attr 1;
+      description
+        "The hash key (struct pf_poolhashkey).";
+    }
+    leaf counter {
+      type nlt:in6-addr;
+      nlx:attr 2;
+    }
+    leaf tblidx {
+      type uint32;
+      nlx:attr 3;
+    }
+    leaf proxy-src-port {
+      type uint16;
+      nlx:attr 4;
+    }
+    leaf proxy-dst-port {
+      type uint16;
+      nlx:attr 5;
+    }
+    leaf opts {
+      type uint8;
+      nlx:attr 6;
+      description
+        "PF_POOL_* options.";
+    }
+    container mape {
+      nlx:attr 7;
+      uses mape-portset-attrs;
+    }
+  }
+
+  grouping timeouts-attrs {
+    nlx:name-prefix "PF_TT_";
+    description
+      "A rule's timeouts (pf_timeout_type_t).";
+    leaf-list timeout {
+      type uint32;
+      nlx:attr 1;
+      description
+        "One per PFTM_* timeout, in order, PFTM_MAX of them.";
+    }
+  }
+
+  grouping rule-uid-attrs {
+    nlx:name-prefix "PF_RUT_";
+    description
+      "A rule's user or group match (struct pf_rule_uid,
+       pf_rule_uid_type_t).";
+    leaf uid-low {
+      type uint32;
+      nlx:attr 1;
+    }
+    leaf uid-high {
+      type uint32;
+      nlx:attr 2;
+    }
+    leaf op {
+      type port-op;
+      nlx:attr 3;
+    }
+  }
+
+  grouping threshold-attrs {
+    nlx:name-prefix "PF_TH_";
+    description
+      "A rate threshold (struct pf_kthreshold,
+       pf_threshold_types_t).";
+    leaf limit {
+      type uint32;
+      nlx:attr 1;
+    }
+    leaf seconds {
+      type uint32;
+      nlx:attr 2;
+    }
+    leaf count {
+      type uint32;
+      nlx:attr 3;
+      description
+        "Sent: the current rate estimate.";
+    }
+    leaf last {
+      type uint32;
+      nlx:attr 4;
+      description
+        "Not sent.";
+    }
+  }
+
+  grouping rule-attrs {
+    nlx:name-prefix "PF_RT_";
+    description
+      "A rule (struct pf_krule, pf_rule_type_t), as addrule sends
+       it in and getrule gets it out.";
+    container src {
+      nlx:attr 1;
+      uses rule-addr-attrs;
+    }
+    container dst {
+      nlx:attr 2;
+      uses rule-addr-attrs;
+    }
+    leaf ridentifier {
+      type uint32;
+      nlx:attr 3;
+    }
+    container labels {
+      nlx:attr 4;
+      uses labels-attrs;
+    }
+    leaf ifname {
+      type nlt:ifname;
+      nlx:attr 5;
+    }
+    leaf qname {
+      type string {
+        length "0..63";
+      }
+      nlx:attr 6;
+    }
+    leaf pqname {
+      type string {
+        length "0..63";
+      }
+      nlx:attr 7;
+    }
+    leaf tagname {
+      type string {
+        length "0..63";
+      }
+      nlx:attr 8;
+    }
+    leaf match-tagname {
+      type string {
+        length "0..63";
+      }
+      nlx:attr 9;
+    }
+    leaf overload-tblname {
+      type string {
+        length "0..31";
+      }
+      nlx:attr 10;
+    }
+    container rpool-rdr {
+      nlx:attr 11;
+      description
+        "The redirection pool.";
+      uses pool-attrs;
+    }
+    leaf os-fingerprint {
+      type uint32;
+      nlx:attr 12;
+    }
+    leaf rtableid {
+      type uint32;
+      nlx:attr 13;
+    }
+    container timeout {
+      nlx:attr 14;
+      uses timeouts-attrs;
+    }
+    leaf max-states {
+      type uint32;
+      nlx:attr 15;
+    }
+    leaf max-src-nodes {
+      type uint32;
+      nlx:attr 16;
+    }
+    leaf max-src-states {
+      type uint32;
+      nlx:attr 17;
+    }
+    leaf max-src-conn-rate-limit {
+      type uint32;
+      nlx:attr 18;
+    }
+    leaf max-src-conn-rate-secs {
+      type uint32;
+      nlx:attr 19;
+    }
+    leaf dnpipe {
+      type uint16;
+      nlx:attr 20;
+    }
+    leaf dnrpipe {
+      type uint16;
+      nlx:attr 21;
+    }
+    leaf dnflags {
+      type uint32;
+      nlx:attr 22;
+    }
+    leaf nr {
+      type uint32;
+      nlx:attr 23;
+      description
+        "The rule's number in its ruleset.";
+    }
+    leaf prob {
+      type uint32;
+      nlx:attr 24;
+    }
+    leaf cuid {
+      type uint32;
+      nlx:attr 25;
+    }
+    leaf cpid {
+      type uint32;
+      nlx:attr 26;
+    }
+    leaf return-icmp {
+      type uint16;
+      nlx:attr 27;
+    }
+    leaf return-icmp6 {
+      type uint16;
+      nlx:attr 28;
+    }
+    leaf max-mss {
+      type uint16;
+      nlx:attr 29;
+    }
+    leaf scrub-flags {
+      type uint16;
+      nlx:attr 30;
+    }
+    container uid {
+      nlx:attr 31;
+      uses rule-uid-attrs;
+    }
+    container gid {
+      nlx:attr 32;
+      uses rule-uid-attrs;
+    }
+    leaf rule-flag {
+      type uint32;
+      nlx:attr 33;
+    }
+    leaf action {
+      type action;
+      nlx:attr 34;
+    }
+    leaf direction {
+      type direction;
+      nlx:attr 35;
+    }
+    leaf log {
+      type uint8;
+      nlx:attr 36;
+    }
+    leaf logif {
+      type uint8;
+      nlx:attr 37;
+    }
+    leaf quick {
+      type uint8;
+      nlx:attr 38;
+    }
+    leaf if-not {
+      type uint8;
+      nlx:attr 39;
+    }
+    leaf match-tag-not {
+      type uint8;
+      nlx:attr 40;
+    }
+    leaf natpass {
+      type uint8;
+      nlx:attr 41;
+    }
+    leaf keep-state {
+      type uint8;
+      nlx:attr 42;
+    }
+    leaf af {
+      type nlt:address-family;
+      nlx:attr 43;
+    }
+    leaf proto {
+      type uint8;
+      nlx:attr 44;
+    }
+    leaf type {
+      type uint8;
+      nlx:attr 45;
+      description
+        "The ICMP type; type-2 carries it in full.";
+    }
+    leaf code {
+      type uint8;
+      nlx:attr 46;
+      description
+        "The ICMP code; code-2 carries it in full.";
+    }
+    leaf flags {
+      type uint8;
+      nlx:attr 47;
+      description
+        "The TCP flags to match.";
+    }
+    leaf flagset {
+      type uint8;
+      nlx:attr 48;
+      description
+        "The TCP flags that matter.";
+    }
+    leaf min-ttl {
+      type uint8;
+      nlx:attr 49;
+    }
+    leaf allow-opts {
+      type uint8;
+      nlx:attr 50;
+    }
+    leaf rt {
+      type uint8;
+      nlx:attr 51;
+      description
+        "The route-to kind, PF_ROUTETO, PF_REPLYTO, PF_DUPTO.";
+    }
+    leaf return-ttl {
+      type uint8;
+      nlx:attr 52;
+    }
+    leaf tos {
+      type uint8;
+      nlx:attr 53;
+    }
+    leaf set-tos {
+      type uint8;
+      nlx:attr 54;
+    }
+    leaf anchor-relative {
+      type uint8;
+      nlx:attr 55;
+    }
+    leaf anchor-wildcard {
+      type uint8;
+      nlx:attr 56;
+    }
+    leaf flush {
+      type uint8;
+      nlx:attr 57;
+    }
+    leaf prio {
+      type uint8;
+      nlx:attr 58;
+    }
+    leaf set-prio {
+      type uint8;
+      nlx:attr 59;
+    }
+    leaf set-prio-reply {
+      type uint8;
+      nlx:attr 60;
+    }
+    leaf divert-address {
+      type nlt:in6-addr;
+      nlx:attr 61;
+    }
+    leaf divert-port {
+      type uint16;
+      nlx:attr 62;
+    }
+    leaf packets-in {
+      type uint64;
+      nlx:attr 63;
+      description
+        "Sent: a counter.";
+    }
+    leaf packets-out {
+      type uint64;
+      nlx:attr 64;
+      description
+        "Sent: a counter.";
+    }
+    leaf bytes-in {
+      type uint64;
+      nlx:attr 65;
+      description
+        "Sent: a counter.";
+    }
+    leaf bytes-out {
+      type uint64;
+      nlx:attr 66;
+      description
+        "Sent: a counter.";
+    }
+    leaf evaluations {
+      type uint64;
+      nlx:attr 67;
+      description
+        "Sent: a counter.";
+    }
+    leaf timestamp {
+      type uint64;
+      nlx:attr 68;
+      description
+        "Sent: when the rule last matched.";
+    }
+    leaf states-cur {
+      type uint64;
+      nlx:attr 69;
+      description
+        "Sent: the states the rule holds.";
+    }
+    leaf states-total {
+      type uint64;
+      nlx:attr 70;
+      description
+        "Sent: the states the rule has created.";
+    }
+    leaf src-nodes {
+      type uint64;
+      nlx:attr 71;
+      description
+        "Sent: the source nodes, all kinds.";
+    }
+    leaf anchor-call {
+      type string;
+      nlx:attr 72;
+      description
+        "The anchor the rule calls.";
+    }
+    leaf rcv-ifname {
+      type nlt:ifname;
+      nlx:attr 73;
+    }
+    leaf max-src-conn {
+      type uint32;
+      nlx:attr 74;
+    }
+    container rpool-nat {
+      nlx:attr 75;
+      description
+        "The translation pool.";
+      uses pool-attrs;
+    }
+    leaf naf {
+      type nlt:address-family;
+      nlx:attr 76;
+      description
+        "The family translated to.";
+    }
+    container rpool-rt {
+      nlx:attr 77;
+      description
+        "The route-to pool.";
+      uses pool-attrs;
+    }
+    leaf rcv-ifnot {
+      type boolean;
+      nlx:attr 78;
+    }
+    leaf src-nodes-limit {
+      type uint64;
+      nlx:attr 79;
+      description
+        "Sent: a counter.";
+    }
+    leaf src-nodes-nat {
+      type uint64;
+      nlx:attr 80;
+      description
+        "Sent: a counter.";
+    }
+    leaf src-nodes-route {
+      type uint64;
+      nlx:attr 81;
+      description
+        "Sent: a counter.";
+    }
+    container pktrate {
+      nlx:attr 82;
+      uses threshold-attrs;
+    }
+    leaf max-pkt-size {
+      type uint16;
+      nlx:attr 83;
+    }
+    leaf type-2 {
+      type uint16;
+      nlx:attr 84;
+      description
+        "The ICMP type, 16 bits.";
+    }
+    leaf code-2 {
+      type uint16;
+      nlx:attr 85;
+      description
+        "The ICMP code, 16 bits.";
+    }
+    leaf exptime {
+      type nlt:time-t;
+      nlx:attr 86;
+      description
+        "Sent: when the rule expires.";
+    }
+    leaf state-limit {
+      type uint8;
+      nlx:attr 87;
+      description
+        "The state limiter's id.";
+    }
+    leaf source-limit {
+      type uint8;
+      nlx:attr 88;
+      description
+        "The source limiter's id.";
+    }
+    leaf state-limit-action {
+      type uint32;
+      nlx:attr 89;
+    }
+    leaf source-limit-action {
+      type uint32;
+      nlx:attr 90;
+    }
+  }
+
+  grouping state-attrs {
+    nlx:name-prefix "PF_ST_";
+    description
+      "A state (pfstate_type_t): the filters of a getstates
+       request, and a state in its reply.";
+    leaf id {
+      type uint64;
+      nlx:attr 1;
+      description
+        "The state's id.";
+    }
+    leaf creatorid {
+      type uint32;
+      nlx:attr 2;
+      description
+        "The creator's id, in network byte order.";
+    }
+    leaf ifname {
+      type nlt:ifname;
+      nlx:attr 3;
+      description
+        "The interface; a filter when read.";
+    }
+    leaf orig-ifname {
+      type nlt:ifname;
+      nlx:attr 4;
+    }
+    container key-wire {
+      nlx:attr 5;
+      uses state-key-attrs;
+    }
+    container key-stack {
+      nlx:attr 6;
+      uses state-key-attrs;
+    }
+    container peer-src {
+      nlx:attr 7;
+      uses state-peer-attrs;
+    }
+    container peer-dst {
+      nlx:attr 8;
+      uses state-peer-attrs;
+    }
+    leaf rt-addr {
+      type nlt:ip-address;
+      nlx:attr 9;
+    }
+    leaf rule {
+      type uint32;
+      nlx:attr 10;
+      description
+        "The rule's number, -1 for none.";
+    }
+    leaf anchor {
+      type uint32;
+      nlx:attr 11;
+    }
+    leaf nat-rule {
+      type uint32;
+      nlx:attr 12;
+    }
+    leaf creation {
+      type uint32;
+      nlx:attr 13;
+      units "seconds";
+      description
+        "The state's age.";
+    }
+    leaf expire {
+      type uint32;
+      nlx:attr 14;
+      units "seconds";
+      description
+        "Until the state expires.";
+    }
+    leaf packets0 {
+      type uint64;
+      nlx:attr 15;
+    }
+    leaf packets1 {
+      type uint64;
+      nlx:attr 16;
+    }
+    leaf bytes0 {
+      type uint64;
+      nlx:attr 17;
+    }
+    leaf bytes1 {
+      type uint64;
+      nlx:attr 18;
+    }
+    leaf af {
+      type nlt:address-family;
+      nlx:attr 19;
+      description
+        "A filter when read.";
+    }
+    leaf proto {
+      type uint8;
+      nlx:attr 21;
+      description
+        "The IP protocol; a filter when read, 16 bits then.";
+    }
+    leaf direction {
+      type direction;
+      nlx:attr 22;
+    }
+    leaf log {
+      type uint8;
+      nlx:attr 23;
+    }
+    leaf timeout {
+      type uint8;
+      nlx:attr 24;
+      description
+        "The PFTM_* timeout in force.";
+    }
+    leaf state-flags {
+      type uint16;
+      nlx:attr 25;
+      description
+        "PFSTATE_* flags; sent as 16 bits.";
+    }
+    leaf sync-flags {
+      type uint8;
+      nlx:attr 26;
+    }
+    leaf updates {
+      type uint8;
+      nlx:attr 27;
+    }
+    leaf version {
+      type uint64;
+      nlx:attr 28;
+      description
+        "PF_STATE_VERSION.";
+    }
+    leaf filter-addr {
+      type nlt:in6-addr;
+      nlx:attr 29;
+      description
+        "Read: dump the states matching this address under
+         filter-mask.";
+    }
+    leaf filter-mask {
+      type nlt:in6-addr;
+      nlx:attr 30;
+    }
+    leaf rtableid {
+      type int32;
+      nlx:attr 31;
+    }
+    leaf min-ttl {
+      type uint8;
+      nlx:attr 32;
+    }
+    leaf max-mss {
+      type uint16;
+      nlx:attr 33;
+    }
+    leaf dnpipe {
+      type uint16;
+      nlx:attr 34;
+    }
+    leaf dnrpipe {
+      type uint16;
+      nlx:attr 35;
+    }
+    leaf rt {
+      type uint8;
+      nlx:attr 36;
+    }
+    leaf rt-ifname {
+      type nlt:ifname;
+      nlx:attr 37;
+    }
+    leaf src-node-flags {
+      type uint8;
+      nlx:attr 38;
+      description
+        "PFSTATE_SRC_NODE_* flags.";
+    }
+    leaf rt-af {
+      type nlt:address-family;
+      nlx:attr 39;
+    }
+    leaf include-rule {
+      type boolean;
+      nlx:attr 40;
+      description
+        "Read: send the rule that created each state.";
+    }
+    container created-by-rule {
+      nlx:attr 41;
+      description
+        "Sent when include-rule was set.";
+      uses rule-attrs;
+    }
+  }
+
+  grouping addrule-attrs {
+    nlx:name-prefix "PF_ART_";
+    description
+      "An addrule request (pf_addrule_type_t).";
+    leaf ticket {
+      type uint32;
+      nlx:attr 1;
+    }
+    leaf pool-ticket {
+      type uint32;
+      nlx:attr 2;
+    }
+    leaf anchor {
+      type string;
+      nlx:attr 3;
+    }
+    leaf anchor-call {
+      type string;
+      nlx:attr 4;
+    }
+    container rule {
+      nlx:attr 5;
+      uses rule-attrs;
+    }
+  }
+
+  grouping getrules-attrs {
+    nlx:name-prefix "PF_GR_";
+    description
+      "A getrules or getrule request and reply
+       (pf_getrules_type_t).";
+    leaf anchor {
+      type string;
+      nlx:attr 1;
+    }
+    leaf action {
+      type action;
+      nlx:attr 2;
+      description
+        "The ruleset.";
+    }
+    leaf nr {
+      type uint32;
+      nlx:attr 3;
+      description
+        "Sent by getrules: the rules; read by getrule: the rule.";
+    }
+    leaf ticket {
+      type uint32;
+      nlx:attr 4;
+    }
+    leaf clear {
+      type uint8;
+      nlx:attr 5;
+      description
+        "Read by getrule: zero the counters.";
+    }
+  }
+
+  grouping clear-states-attrs {
+    nlx:name-prefix "PF_CS_";
+    description
+      "A clrstates or killstates request and reply
+       (pf_clear_states_type_t).";
+    leaf cmp-id {
+      type uint64;
+      nlx:attr 1;
+    }
+    leaf cmp-creatorid {
+      type uint32;
+      nlx:attr 2;
+    }
+    leaf cmp-dir {
+      type direction;
+      nlx:attr 3;
+    }
+    leaf af {
+      type nlt:address-family;
+      nlx:attr 4;
+    }
+    leaf proto {
+      type uint8;
+      nlx:attr 5;
+    }
+    container src {
+      nlx:attr 6;
+      uses rule-addr-attrs;
+    }
+    container dst {
+      nlx:attr 7;
+      uses rule-addr-attrs;
+    }
+    container rt-addr {
+      nlx:attr 8;
+      uses rule-addr-attrs;
+    }
+    leaf ifname {
+      type nlt:ifname;
+      nlx:attr 9;
+    }
+    leaf label {
+      type string {
+        length "0..63";
+      }
+      nlx:attr 10;
+    }
+    leaf kill-match {
+      type boolean;
+      nlx:attr 11;
+    }
+    leaf nat {
+      type boolean;
+      nlx:attr 12;
+    }
+    leaf killed {
+      type uint32;
+      nlx:attr 13;
+      description
+        "Sent: the states killed.";
+    }
+  }
+
+  grouping set-statusif-attrs {
+    nlx:name-prefix "PF_SS_";
+    description
+      "A set-statusif request (pf_set_statusif_types_t).";
+    leaf ifname {
+      type nlt:ifname;
+      nlx:attr 1;
+    }
+  }
+
+  grouping counter-attrs {
+    nlx:name-prefix "PF_C_";
+    description
+      "One named counter of the status (pf_counter_types_t).";
+    leaf counter {
+      type uint64;
+      nlx:attr 1;
+    }
+    leaf name {
+      type string;
+      nlx:attr 2;
+    }
+    leaf id {
+      type uint32;
+      nlx:attr 3;
+    }
+  }
+
+  grouping status-attrs {
+    nlx:name-prefix "PF_GS_";
+    description
+      "The status, a get-status reply (pf_get_status_types_t).";
+    leaf ifname {
+      type nlt:ifname;
+      nlx:attr 1;
+      description
+        "The status interface.";
+    }
+    leaf running {
+      type boolean;
+      nlx:attr 2;
+    }
+    leaf since {
+      type uint32;
+      nlx:attr 3;
+    }
+    leaf debug {
+      type uint32;
+      nlx:attr 4;
+    }
+    leaf hostid {
+      type uint32;
+      nlx:attr 5;
+    }
+    leaf states {
+      type uint32;
+      nlx:attr 6;
+    }
+    leaf src-nodes {
+      type uint32;
+      nlx:attr 7;
+    }
+    leaf reassemble {
+      type uint32;
+      nlx:attr 8;
+    }
+    leaf syncookies-active {
+      type uint32;
+      nlx:attr 9;
+      description
+        "Sent as 32 bits though the header says bool.";
+    }
+    list counters {
+      nlx:attr 10;
+      description
+        "The reason counters, PFRES_*, one nest each.";
+      uses counter-attrs;
+    }
+    list lcounters {
+      nlx:attr 11;
+      description
+        "The limit counters, KLCNT_*.";
+      uses counter-attrs;
+    }
+    list fcounters {
+      nlx:attr 12;
+      description
+        "The state counters, FCNT_*.";
+      uses counter-attrs;
+    }
+    list scounters {
+      nlx:attr 13;
+      description
+        "The source node counters, SCNT_*.";
+      uses counter-attrs;
+    }
+    leaf chksum {
+      type binary {
+        length "16";
+      }
+      nlx:attr 14;
+      description
+        "The MD5 of the ruleset.";
+    }
+    leaf-list pcounters {
+      type uint64;
+      nlx:attr 15;
+      nlx:array;
+      description
+        "The packet counters, [af][dir][action], 8 of them.";
+    }
+    leaf-list bcounters {
+      type uint64;
+      nlx:attr 16;
+      nlx:array;
+      description
+        "The byte counters, [af][dir], 4 of them.";
+    }
+    list ncounters {
+      nlx:attr 17;
+      description
+        "The NAT counters, NCNT_*.";
+      uses counter-attrs;
+    }
+    leaf fragments {
+      type uint64;
+      nlx:attr 18;
+      description
+        "The fragments held.";
+    }
+  }
+
+  grouping natlook-attrs {
+    nlx:name-prefix "PF_NL_";
+    description
+      "A natlook request and reply (pf_natlook_types_t).";
+    leaf af {
+      type nlt:address-family;
+      nlx:attr 1;
+    }
+    leaf direction {
+      type direction;
+      nlx:attr 2;
+    }
+    leaf proto {
+      type uint8;
+      nlx:attr 3;
+    }
+    leaf src-addr {
+      type nlt:in6-addr;
+      nlx:attr 4;
+    }
+    leaf dst-addr {
+      type nlt:in6-addr;
+      nlx:attr 5;
+    }
+    leaf src-port {
+      type uint16;
+      nlx:attr 6;
+    }
+    leaf dst-port {
+      type uint16;
+      nlx:attr 7;
+    }
+  }
+
+  grouping set-debug-attrs {
+    nlx:name-prefix "PF_SD_";
+    description
+      "A set-debug request (pf_set_debug_types_t).";
+    leaf level {
+      type uint32;
+      nlx:attr 1;
+    }
+  }
+
+  grouping timeout-attrs {
+    nlx:name-prefix "PF_TO_";
+    description
+      "A set-timeout or get-timeout request and reply
+       (pf_timeout_types_t).";
+    leaf timeout {
+      type uint32;
+      nlx:attr 1;
+      description
+        "The PFTM_* timeout.";
+    }
+    leaf seconds {
+      type uint32;
+      nlx:attr 2;
+    }
+  }
+
+  grouping limit-attrs {
+    nlx:name-prefix "PF_LI_";
+    description
+      "A set-limit or get-limit request and reply
+       (pf_limit_types_t).";
+    leaf index {
+      type uint32;
+      nlx:attr 1;
+      description
+        "The PF_LIMIT_* limit.";
+    }
+    leaf limit {
+      type uint32;
+      nlx:attr 2;
+    }
+  }
+
+  grouping begin-addrs-attrs {
+    nlx:name-prefix "PF_BA_";
+    description
+      "A begin-addrs reply (pf_begin_addrs_types_t).";
+    leaf ticket {
+      type uint32;
+      nlx:attr 1;
+    }
+  }
+
+  grouping pool-addr-attrs {
+    nlx:name-prefix "PF_PA_";
+    description
+      "An address of a pool (struct pf_pooladdr,
+       pf_pool_addr_types_t).";
+    container addr {
+      nlx:attr 1;
+      uses addr-attrs;
+    }
+    leaf ifname {
+      type nlt:ifname;
+      nlx:attr 2;
+    }
+  }
+
+  grouping add-addr-attrs {
+    nlx:name-prefix "PF_AA_";
+    description
+      "An add-addr, get-addrs or get-addr request and reply
+       (pf_add_addr_types_t).";
+    leaf action {
+      type uint32;
+      nlx:attr 1;
+    }
+    leaf ticket {
+      type uint32;
+      nlx:attr 2;
+    }
+    leaf nr {
+      type uint32;
+      nlx:attr 3;
+    }
+    leaf r-num {
+      type uint32;
+      nlx:attr 4;
+    }
+    leaf r-action {
+      type uint8;
+      nlx:attr 5;
+    }
+    leaf r-last {
+      type uint8;
+      nlx:attr 6;
+    }
+    leaf af {
+      type nlt:address-family;
+      nlx:attr 7;
+    }
+    leaf anchor {
+      type string;
+      nlx:attr 8;
+    }
+    container addr {
+      nlx:attr 9;
+      uses pool-addr-attrs;
+    }
+    leaf which {
+      type uint32;
+      nlx:attr 10;
+      description
+        "Which pool: PF_RDR, PF_NAT or PF_RT.";
+    }
+  }
+
+  grouping rulesets-attrs {
+    nlx:name-prefix "PF_RS_";
+    description
+      "A get-rulesets or get-ruleset request and reply
+       (pf_get_rulesets_types_t).";
+    leaf path {
+      type string;
+      nlx:attr 1;
+      description
+        "The anchor's path.";
+    }
+    leaf nr {
+      type uint32;
+      nlx:attr 2;
+      description
+        "Sent by get-rulesets: the child anchors; read by
+         get-ruleset: which.";
+    }
+    leaf name {
+      type string;
+      nlx:attr 3;
+      description
+        "Sent by get-ruleset: the child anchor's name.";
+    }
+  }
+
+  grouping srcnode-attrs {
+    nlx:name-prefix "PF_SN_";
+    description
+      "A source node, a get-srcnodes reply (pf_srcnodes_types_t).";
+    leaf addr {
+      type nlt:in6-addr;
+      nlx:attr 1;
+    }
+    leaf raddr {
+      type nlt:in6-addr;
+      nlx:attr 2;
+    }
+    leaf rule-nr {
+      type uint32;
+      nlx:attr 3;
+    }
+    leaf bytes-in {
+      type uint64;
+      nlx:attr 4;
+    }
+    leaf bytes-out {
+      type uint64;
+      nlx:attr 5;
+    }
+    leaf packets-in {
+      type uint64;
+      nlx:attr 6;
+    }
+    leaf packets-out {
+      type uint64;
+      nlx:attr 7;
+    }
+    leaf states {
+      type uint32;
+      nlx:attr 8;
+    }
+    leaf connections {
+      type uint32;
+      nlx:attr 9;
+    }
+    leaf af {
+      type nlt:address-family;
+      nlx:attr 10;
+    }
+    leaf rule-type {
+      type uint8;
+      nlx:attr 11;
+    }
+    leaf creation {
+      type uint64;
+      nlx:attr 12;
+      units "seconds";
+    }
+    leaf expire {
+      type uint64;
+      nlx:attr 13;
+      units "seconds";
+    }
+    container connection-rate {
+      nlx:attr 14;
+      uses threshold-attrs;
+    }
+    leaf raf {
+      type nlt:address-family;
+      nlx:attr 15;
+    }
+    leaf node-type {
+      type uint8;
+      nlx:attr 16;
+      description
+        "PF_SN_LIMIT, PF_SN_NAT or PF_SN_ROUTE.";
+    }
+  }
+
+  grouping table-attrs {
+    nlx:name-prefix "PF_T_";
+    description
+      "A table (struct pfr_table, pf_tables_t), in the table
+       commands' requests and replies.";
+    leaf anchor {
+      type string;
+      nlx:attr 1;
+    }
+    leaf name {
+      type string {
+        length "0..31";
+      }
+      nlx:attr 2;
+    }
+    leaf table-flags {
+      type uint32;
+      nlx:attr 3;
+      description
+        "PFR_TFLAG_* flags.";
+    }
+    leaf flags {
+      type uint32;
+      nlx:attr 4;
+      description
+        "PFR_FLAG_* flags of the request.";
+    }
+    leaf nbr-deleted {
+      type uint32;
+      nlx:attr 5;
+      description
+        "Sent: the tables, or addresses, deleted; 64 bits in a
+         clr-addrs reply.";
+    }
+    leaf nbr-added {
+      type uint32;
+      nlx:attr 6;
+      description
+        "Sent: the tables added.";
+    }
+  }
+
+  grouping tstats-attrs {
+    nlx:name-prefix "PF_TS_";
+    description
+      "A table's statistics, a get-tstats reply (struct
+       pfr_tstats, pf_tstats_t).";
+    container table {
+      nlx:attr 1;
+      uses table-attrs;
+    }
+    leaf-list packets {
+      type uint64;
+      nlx:attr 2;
+      nlx:array;
+      description
+        "[dir][op], PFR_DIR_MAX * PFR_OP_TABLE_MAX of them.";
+    }
+    leaf-list bytes {
+      type uint64;
+      nlx:attr 3;
+      nlx:array;
+    }
+    leaf match {
+      type uint64;
+      nlx:attr 4;
+    }
+    leaf nomatch {
+      type uint64;
+      nlx:attr 5;
+    }
+    leaf tzero {
+      type uint64;
+      nlx:attr 6;
+    }
+    leaf cnt {
+      type uint64;
+      nlx:attr 7;
+    }
+    leaf-list refcnt {
+      type uint64;
+      nlx:attr 8;
+      nlx:array;
+      description
+        "PFR_REFCNT_MAX of them.";
+    }
+    leaf nzero {
+      type uint64;
+      nlx:attr 9;
+      description
+        "Sent by clr-tstats: the tables zeroed.";
+    }
+  }
+
+  grouping pfr-addr-attrs {
+    nlx:name-prefix "PFR_A_";
+    description
+      "An address of a table (struct pfr_addr, pfr_addr_t).";
+    leaf af {
+      type nlt:address-family;
+      nlx:attr 1;
+      description
+        "Read as 8 bits, sent as 32.";
+    }
+    leaf net {
+      type uint8;
+      nlx:attr 2;
+      description
+        "The prefix length.";
+    }
+    leaf not {
+      type boolean;
+      nlx:attr 3;
+    }
+    leaf addr {
+      type nlt:in6-addr;
+      nlx:attr 4;
+    }
+    leaf fback {
+      type uint8;
+      nlx:attr 5;
+      description
+        "Sent: the feedback, PFR_FB_*.";
+    }
+  }
+
+  grouping table-addrs-attrs {
+    nlx:name-prefix "PF_TA_";
+    description
+      "The table address commands' requests and replies
+       (pf_table_addrs_t).";
+    container table {
+      nlx:attr 1;
+      uses table-attrs;
+    }
+    list addr {
+      nlx:attr 2;
+      description
+        "The addresses, one nest each, at most 256 in a request.";
+      uses pfr-addr-attrs;
+    }
+    leaf flags {
+      type uint32;
+      nlx:attr 3;
+      description
+        "PFR_FLAG_* flags.";
+    }
+    leaf nbr-added {
+      type uint32;
+      nlx:attr 4;
+    }
+    leaf nbr-deleted {
+      type uint32;
+      nlx:attr 5;
+    }
+    leaf nbr-changed {
+      type uint32;
+      nlx:attr 6;
+    }
+    leaf addr-count {
+      type uint32;
+      nlx:attr 7;
+      description
+        "Sent by table-get-addr in its first message: the
+         addresses to follow.";
+    }
+  }
+
+  grouping astats-attrs {
+    nlx:name-prefix "PF_AS_";
+    description
+      "An address's statistics (struct pfr_astats, pf_astats_t).";
+    container addr {
+      nlx:attr 1;
+      uses pfr-addr-attrs;
+    }
+    leaf-list packets {
+      type uint64;
+      nlx:attr 2;
+      nlx:array;
+      description
+        "[dir][op], PFR_DIR_MAX * PFR_OP_ADDR_MAX of them.";
+    }
+    leaf-list bytes {
+      type uint64;
+      nlx:attr 3;
+      nlx:array;
+    }
+    leaf tzero {
+      type nlt:time-t;
+      nlx:attr 4;
+    }
+  }
+
+  grouping table-astats-attrs {
+    nlx:name-prefix "PF_TAS_";
+    description
+      "The table statistics commands' requests and replies
+       (pf_table_astats_t).";
+    container table {
+      nlx:attr 1;
+      uses table-attrs;
+    }
+    list astats {
+      nlx:attr 2;
+      description
+        "Sent by table-get-astats: one address each.";
+      uses astats-attrs;
+    }
+    leaf flags {
+      type uint32;
+      nlx:attr 3;
+    }
+    leaf astats-count {
+      type uint32;
+      nlx:attr 4;
+      description
+        "Sent first: the addresses to follow, or matched.";
+    }
+    leaf astats-zeroed {
+      type uint32;
+      nlx:attr 5;
+    }
+    list addr {
+      nlx:attr 6;
+      description
+        "Sent by table-test-addrs: the addresses, with their
+         feedback.";
+      uses pfr-addr-attrs;
+    }
+  }
+
+  grouping limit-rate-attrs {
+    nlx:name-prefix "PF_LR_";
+    description
+      "A limiter's rate (pf_limit_rate_t).";
+    leaf limit {
+      type uint32;
+      nlx:attr 1;
+    }
+    leaf seconds {
+      type uint32;
+      nlx:attr 2;
+    }
+  }
+
+  grouping state-limit-attrs {
+    nlx:name-prefix "PF_SL_";
+    description
+      "A state limiter (pf_state_limit_t).";
+    leaf ticket {
+      type uint32;
+      nlx:attr 1;
+    }
+    leaf name {
+      type string {
+        length "0..15";
+      }
+      nlx:attr 2;
+    }
+    leaf id {
+      type uint32;
+      nlx:attr 3;
+    }
+    leaf limit {
+      type uint32;
+      nlx:attr 4;
+    }
+    container rate {
+      nlx:attr 5;
+      uses limit-rate-attrs;
+    }
+    leaf descr {
+      type string {
+        length "0..63";
+      }
+      nlx:attr 6;
+    }
+    leaf inuse {
+      type uint32;
+      nlx:attr 7;
+    }
+    leaf admitted {
+      type uint64;
+      nlx:attr 8;
+    }
+    leaf hardlimited {
+      type uint64;
+      nlx:attr 9;
+    }
+    leaf ratelimited {
+      type uint64;
+      nlx:attr 10;
+    }
+  }
+
+  grouping source-limit-attrs {
+    nlx:name-prefix "PF_SCL_";
+    description
+      "A source limiter (pf_source_limit_t).";
+    leaf ticket {
+      type uint32;
+      nlx:attr 1;
+    }
+    leaf name {
+      type string {
+        length "0..15";
+      }
+      nlx:attr 2;
+    }
+    leaf id {
+      type uint32;
+      nlx:attr 3;
+    }
+    leaf entries {
+      type uint32;
+      nlx:attr 4;
+    }
+    leaf limit {
+      type uint32;
+      nlx:attr 5;
+    }
+    container rate {
+      nlx:attr 6;
+      uses limit-rate-attrs;
+    }
+    leaf overload-tbl-name {
+      type string {
+        length "0..31";
+      }
+      nlx:attr 7;
+    }
+    leaf overload-high-wm {
+      type uint32;
+      nlx:attr 8;
+    }
+    leaf overload-low-wm {
+      type uint32;
+      nlx:attr 9;
+    }
+    leaf inet-prefix {
+      type uint32;
+      nlx:attr 10;
+    }
+    leaf inet6-prefix {
+      type uint32;
+      nlx:attr 11;
+    }
+    leaf descr {
+      type string {
+        length "0..63";
+      }
+      nlx:attr 12;
+    }
+    leaf nentries {
+      type uint32;
+      nlx:attr 13;
+    }
+    leaf inuse {
+      type uint32;
+      nlx:attr 14;
+    }
+    leaf addr-allocs {
+      type uint64;
+      nlx:attr 15;
+    }
+    leaf addr-nomem {
+      type uint64;
+      nlx:attr 16;
+    }
+    leaf admitted {
+      type uint64;
+      nlx:attr 17;
+    }
+    leaf addrlimited {
+      type uint64;
+      nlx:attr 18;
+    }
+    leaf hardlimited {
+      type uint64;
+      nlx:attr 19;
+    }
+    leaf ratelimited {
+      type uint64;
+      nlx:attr 20;
+    }
+  }
+
+  grouping source-attrs {
+    nlx:name-prefix "PF_SRC_";
+    description
+      "A source of a source limiter (pf_source_t).";
+    leaf name {
+      type string {
+        length "0..15";
+      }
+      nlx:attr 1;
+      description
+        "Read: the limiter.";
+    }
+    leaf id {
+      type uint32;
+      nlx:attr 2;
+      description
+        "Read: the limiter.";
+    }
+    leaf af {
+      type nlt:address-family;
+      nlx:attr 3;
+    }
+    leaf rdomain {
+      type uint32;
+      nlx:attr 4;
+    }
+    leaf addr {
+      type nlt:in6-addr;
+      nlx:attr 5;
+    }
+    leaf inuse {
+      type uint32;
+      nlx:attr 6;
+    }
+    leaf admitted {
+      type uint64;
+      nlx:attr 7;
+    }
+    leaf hardlimited {
+      type uint64;
+      nlx:attr 8;
+    }
+    leaf ratelimited {
+      type uint64;
+      nlx:attr 9;
+    }
+    leaf limit {
+      type uint32;
+      nlx:attr 10;
+    }
+    leaf inet-prefix {
+      type uint32;
+      nlx:attr 11;
+    }
+    leaf inet6-prefix {
+      type uint32;
+      nlx:attr 12;
+    }
+  }
+
+  grouping source-clear-attrs {
+    nlx:name-prefix "PF_SC_";
+    description
+      "A source-clear request (pf_source_clear_t); the reply
+       repeats the limiter's name as PF_SCL_NAME (2).";
+    leaf name {
+      type string {
+        length "0..15";
+      }
+      nlx:attr 1;
+    }
+    leaf id {
+      type uint32;
+      nlx:attr 2;
+    }
+    leaf rdomain {
+      type uint32;
+      nlx:attr 3;
+    }
+    leaf af {
+      type nlt:address-family;
+      nlx:attr 4;
+    }
+    leaf addr {
+      type nlt:in6-addr;
+      nlx:attr 5;
+    }
+  }
+
+  grouping ina-define-attrs {
+    nlx:name-prefix "PF_ID_";
+    description
+      "An ina-define request and reply (pf_ina_define_t).";
+    container table {
+      nlx:attr 1;
+      uses table-attrs;
+    }
+    leaf ticket {
+      type uint32;
+      nlx:attr 2;
+    }
+    leaf flags {
+      type uint32;
+      nlx:attr 3;
+    }
+    list addr {
+      nlx:attr 4;
+      description
+        "The addresses, one nest each.";
+      uses pfr-addr-attrs;
+    }
+    leaf nadd {
+      type uint32;
+      nlx:attr 5;
+      description
+        "Sent: the tables added.";
+    }
+    leaf naddr {
+      type uint32;
+      nlx:attr 6;
+      description
+        "Sent: the addresses added.";
+    }
+  }
+
+  grouping osfp-attrs {
+    nlx:name-prefix "PF_OFP_";
+    description
+      "An OS fingerprint (struct pf_osfp_ioctl, pf_osfp_t).";
+    leaf idx {
+      type uint32;
+      nlx:attr 1;
+      description
+        "Read by osfp-get: which.";
+    }
+    leaf os-os {
+      type uint32;
+      nlx:attr 2;
+    }
+    leaf os-enflags {
+      type uint32;
+      nlx:attr 3;
+    }
+    leaf os-class {
+      type string {
+        length "0..31";
+      }
+      nlx:attr 4;
+    }
+    leaf os-version {
+      type string {
+        length "0..31";
+      }
+      nlx:attr 5;
+    }
+    leaf os-subtype {
+      type string {
+        length "0..31";
+      }
+      nlx:attr 6;
+    }
+    leaf tcpopts {
+      type uint64;
+      nlx:attr 7;
+    }
+    leaf wsize {
+      type uint16;
+      nlx:attr 8;
+    }
+    leaf psize {
+      type uint16;
+      nlx:attr 9;
+    }
+    leaf mss {
+      type uint16;
+      nlx:attr 10;
+    }
+    leaf flags {
+      type uint16;
+      nlx:attr 11;
+    }
+    leaf optcnt {
+      type uint8;
+      nlx:attr 12;
+    }
+    leaf wscale {
+      type uint8;
+      nlx:attr 13;
+    }
+    leaf ttl {
+      type uint8;
+      nlx:attr 14;
+    }
+  }
+
+  grouping header {
+    nlx:fixed-header genl:genlmsghdr;
+    uses genl:genlmsghdr;
+  }
+
+  rpc getstates {
+    nlx:cmd PFNL_CMD_GETSTATES;
+    nlx:do;
+    nlx:dump;
+    nlx:privilege PRIV_NETINET_PF;
+    nlx:securelevel 4;
+    description
+      "List the states matching ifname, af, proto, filter-addr
+       and filter-mask, with their rule when include-rule is set.";
+    input {
+      uses header;
+      uses state-attrs;
+    }
+    output {
+      list state {
+        uses header;
+        uses state-attrs;
+      }
+    }
+  }
+
+  rpc getcreators {
+    nlx:cmd PFNL_CMD_GETCREATORS;
+    nlx:do;
+    nlx:dump;
+    nlx:privilege PRIV_NETINET_PF;
+    nlx:securelevel 4;
+    description
+      "List the creator ids of the states, one message each, in
+       creatorid.";
+    input {
+      uses header;
+    }
+    output {
+      list creator {
+        uses header;
+        uses state-attrs;
+      }
+    }
+  }
+
+  rpc start {
+    nlx:cmd PFNL_CMD_START;
+    nlx:do;
+    nlx:privilege PRIV_NETINET_PF;
+    nlx:securelevel 3;
+    description
+      "Enable the firewall.";
+    input {
+      uses header;
+    }
+  }
+
+  rpc stop {
+    nlx:cmd PFNL_CMD_STOP;
+    nlx:do;
+    nlx:privilege PRIV_NETINET_PF;
+    nlx:securelevel 3;
+    description
+      "Disable the firewall.";
+    input {
+      uses header;
+    }
+  }
+
+  rpc addrule {
+    nlx:cmd PFNL_CMD_ADDRULE;
+    nlx:do;
+    nlx:dump;
+    nlx:privilege PRIV_NETINET_PF;
+    nlx:securelevel 3;
+    description
+      "Add a rule to the inactive ruleset under ticket.";
+    input {
+      uses header;
+      uses addrule-attrs;
+    }
+  }
+
+  rpc getrules {
+    nlx:cmd PFNL_CMD_GETRULES;
+    nlx:dump;
+    nlx:privilege PRIV_NETINET_PF;
+    nlx:securelevel 4;
+    description
+      "The rules of anchor's ruleset action: their number and the
+       ticket to read them with.";
+    input {
+      uses header;
+      uses getrules-attrs;
+    }
+    output {
+      uses header;
+      uses getrules-attrs;
+    }
+  }
+
+  rpc getrule {
+    nlx:cmd PFNL_CMD_GETRULE;
+    nlx:dump;
+    nlx:privilege PRIV_NETINET_PF;
+    nlx:securelevel 4;
+    description
+      "Rule nr of anchor's ruleset action under ticket; with
+       clear, zero its counters.";
+    input {
+      uses header;
+      uses getrules-attrs;
+    }
+    output {
+      uses header;
+      uses rule-attrs;
+    }
+  }
+
+  rpc clrstates {
+    nlx:cmd PFNL_CMD_CLRSTATES;
+    nlx:do;
+    nlx:dump;
+    nlx:privilege PRIV_NETINET_PF;
+    nlx:securelevel 3;
+    description
+      "Clear the states matching the request; the reply says how
+       many.";
+    input {
+      uses header;
+      uses clear-states-attrs;
+    }
+    output {
+      uses header;
+      uses clear-states-attrs;
+    }
+  }
+
+  rpc killstates {
+    nlx:cmd PFNL_CMD_KILLSTATES;
+    nlx:do;
+    nlx:dump;
+    nlx:privilege PRIV_NETINET_PF;
+    nlx:securelevel 3;
+    description
+      "Kill the states matching the request; the reply says how
+       many.";
+    input {
+      uses header;
+      uses clear-states-attrs;
+    }
+    output {
+      uses header;
+      uses clear-states-attrs;
+    }
+  }
+
+  rpc set-statusif {
+    nlx:cmd PFNL_CMD_SET_STATUSIF;
+    nlx:do;
+    nlx:privilege PRIV_NETINET_PF;
+    nlx:securelevel 3;
+    description
+      "Set the interface whose statistics the status reports.";
+    input {
+      uses header;
+      uses set-statusif-attrs;
+    }
+  }
+
+  rpc get-status {
+    nlx:cmd PFNL_CMD_GET_STATUS;
+    nlx:dump;
+    nlx:privilege PRIV_NETINET_PF;
+    nlx:securelevel 4;
+    description
+      "The status and counters (pfctl -s info).";
+    input {
+      uses header;
+    }
+    output {
+      uses header;
+      uses status-attrs;
+    }
+  }
+
+  rpc clear-status {
+    nlx:cmd PFNL_CMD_CLEAR_STATUS;
+    nlx:do;
+    nlx:privilege PRIV_NETINET_PF;
+    nlx:securelevel 3;
+    description
+      "Zero the counters.";
+    input {
+      uses header;
+    }
+  }
+
+  rpc natlook {
+    nlx:cmd PFNL_CMD_NATLOOK;
+    nlx:dump;
+    nlx:privilege PRIV_NETINET_PF;
+    nlx:securelevel 4;
+    description
+      "Look a connection up in the states: the reply has the
+       translated addresses and ports.";
+    input {
+      uses header;
+      uses natlook-attrs;
+    }
+    output {
+      uses header;
+      uses natlook-attrs;
+    }
+  }
+
+  rpc set-debug {
+    nlx:cmd PFNL_CMD_SET_DEBUG;
+    nlx:do;
+    nlx:privilege PRIV_NETINET_PF;
+    nlx:securelevel 3;
+    description
+      "Set the debug level.";
+    input {
+      uses header;
+      uses set-debug-attrs;
+    }
+  }
+
+  rpc set-timeout {
+    nlx:cmd PFNL_CMD_SET_TIMEOUT;
+    nlx:do;
+    nlx:privilege PRIV_NETINET_PF;
+    nlx:securelevel 3;
+    description
+      "Set a timeout.";
+    input {
+      uses header;
+      uses timeout-attrs;
+    }
+  }
+
+  rpc get-timeout {
+    nlx:cmd PFNL_CMD_GET_TIMEOUT;
+    nlx:dump;
+    nlx:privilege PRIV_NETINET_PF;
+    nlx:securelevel 4;
+    description
+      "Get a timeout.";
+    input {
+      uses header;
+      uses timeout-attrs;
+    }
+    output {
+      uses header;
+      uses timeout-attrs;
+    }
+  }
+
+  rpc set-limit {
+    nlx:cmd PFNL_CMD_SET_LIMIT;
+    nlx:do;
+    nlx:privilege PRIV_NETINET_PF;
+    nlx:securelevel 3;
+    description
+      "Set a memory pool limit.";
+    input {
+      uses header;
+      uses limit-attrs;
+    }
+  }
+
+  rpc get-limit {
+    nlx:cmd PFNL_CMD_GET_LIMIT;
+    nlx:dump;
+    nlx:privilege PRIV_NETINET_PF;
+    nlx:securelevel 4;
+    description
+      "Get a memory pool limit.";
+    input {
+      uses header;
+      uses limit-attrs;
+    }
+    output {
+      uses header;
+      uses limit-attrs;
+    }
+  }
+
+  rpc begin-addrs {
+    nlx:cmd PFNL_CMD_BEGIN_ADDRS;
+    nlx:do;
+    nlx:dump;
+    nlx:privilege PRIV_NETINET_PF;
+    nlx:securelevel 4;
+    description
+      "Start a pool: the reply has its ticket.";
+    input {
+      uses header;
+    }
+    output {
+      uses header;
+      uses begin-addrs-attrs;
+    }
+  }
+
+  rpc add-addr {
+    nlx:cmd PFNL_CMD_ADD_ADDR;
+    nlx:do;
+    nlx:privilege PRIV_NETINET_PF;
+    nlx:securelevel 4;
+    description
+      "Add an address to the pool under ticket.";
+    input {
+      uses header;
+      uses add-addr-attrs;
+    }
+  }
+
+  rpc get-addrs {
+    nlx:cmd PFNL_CMD_GET_ADDRS;
+    nlx:dump;
+    nlx:privilege PRIV_NETINET_PF;
+    nlx:securelevel 4;
+    description
+      "The addresses of rule r-num's pool which: their number
+       nr.";
+    input {
+      uses header;
+      uses add-addr-attrs;
+    }
+    output {
+      uses header;
+      uses add-addr-attrs;
+    }
+  }
+
+  rpc get-addr {
+    nlx:cmd PFNL_CMD_GET_ADDR;
+    nlx:dump;
+    nlx:privilege PRIV_NETINET_PF;
+    nlx:securelevel 4;
+    description
+      "Address nr of rule r-num's pool which.";
+    input {
+      uses header;
+      uses add-addr-attrs;
+    }
+    output {
+      uses header;
+      uses add-addr-attrs;
+    }
+  }
+
+  rpc get-rulesets {
+    nlx:cmd PFNL_CMD_GET_RULESETS;
+    nlx:dump;
+    nlx:privilege PRIV_NETINET_PF;
+    nlx:securelevel 4;
+    description
+      "The child anchors of path: their number.";
+    input {
+      uses header;
+      uses rulesets-attrs;
+    }
+    output {
+      uses header;
+      uses rulesets-attrs;
+    }
+  }
+
+  rpc get-ruleset {
+    nlx:cmd PFNL_CMD_GET_RULESET;
+    nlx:dump;
+    nlx:privilege PRIV_NETINET_PF;
+    nlx:securelevel 4;
+    description
+      "Child anchor nr of path: its name.";
+    input {
+      uses header;
+      uses rulesets-attrs;
+    }
+    output {
+      uses header;
+      uses rulesets-attrs;
+    }
+  }
+
+  rpc get-srcnodes {
+    nlx:cmd PFNL_CMD_GET_SRCNODES;
+    nlx:dump;
+    nlx:privilege PRIV_NETINET_PF;
+    nlx:securelevel 4;
+    description
+      "List the source nodes.";
+    input {
+      uses header;
+    }
+    output {
+      list srcnode {
+        uses header;
+        uses srcnode-attrs;
+      }
+    }
+  }
+
+  rpc clear-tables {
+    nlx:cmd PFNL_CMD_CLEAR_TABLES;
+    nlx:do;
+    nlx:privilege PRIV_NETINET_PF;
+    nlx:securelevel 3;
+    description
+      "Delete the tables of anchor; the reply says how many.";
+    input {
+      uses header;
+      uses table-attrs;
+    }
+    output {
+      uses header;
+      uses table-attrs;
+    }
+  }
+
+  rpc add-table {
+    nlx:cmd PFNL_CMD_ADD_TABLE;
+    nlx:do;
+    nlx:privilege PRIV_NETINET_PF;
+    nlx:securelevel 3;
+    description
+      "Add a table; the reply says whether it was.";
+    input {
+      uses header;
+      uses table-attrs;
+    }
+    output {
+      uses header;
+      uses table-attrs;
+    }
+  }
+
+  rpc del-table {
+    nlx:cmd PFNL_CMD_DEL_TABLE;
+    nlx:do;
+    nlx:privilege PRIV_NETINET_PF;
+    nlx:securelevel 3;
+    description
+      "Delete a table; the reply says whether it was.";
+    input {
+      uses header;
+      uses table-attrs;
+    }
+    output {
+      uses header;
+      uses table-attrs;
+    }
+  }
+
+  rpc get-tstats {
+    nlx:cmd PFNL_CMD_GET_TSTATS;
+    nlx:dump;
+    nlx:privilege PRIV_NETINET_PF;
+    nlx:securelevel 4;
+    description
+      "The statistics of the tables of anchor, one message each.";
+    input {
+      uses header;
+      uses table-attrs;
+    }
+    output {
+      list tstats {
+        uses header;
+        uses tstats-attrs;
+      }
+    }
+  }
+
+  rpc clr-tstats {
+    nlx:cmd PFNL_CMD_CLR_TSTATS;
+    nlx:do;
+    nlx:privilege PRIV_NETINET_PF;
+    nlx:securelevel 4;
+    description
+      "Zero the statistics of the tables of anchor; the reply
+       says how many in nzero.";
+    input {
+      uses header;
+      uses table-attrs;
+    }
+    output {
+      uses header;
+      uses tstats-attrs;
+    }
+  }
+
+  rpc clr-addrs {
+    nlx:cmd PFNL_CMD_CLR_ADDRS;
+    nlx:do;
+    nlx:privilege PRIV_NETINET_PF;
+    nlx:securelevel 4;
+    description
+      "Empty a table; the reply says how many addresses went, in
+       nbr-deleted as 64 bits.";
+    input {
+      uses header;
+      uses table-attrs;
+    }
+    output {
+      uses header;
+      uses table-attrs;
+    }
+  }
+
+  rpc table-add-addr {
+    nlx:cmd PFNL_CMD_TABLE_ADD_ADDR;
+    nlx:do;
+    nlx:privilege PRIV_NETINET_PF;
+    nlx:securelevel 4;
+    description
+      "Add addresses to a table; the reply says how many.";
+    input {
+      uses header;
+      uses table-addrs-attrs;
+    }
+    output {
+      uses header;
+      uses table-addrs-attrs;
+    }
+  }
+
+  rpc table-del-addr {
+    nlx:cmd PFNL_CMD_TABLE_DEL_ADDR;
+    nlx:do;
+    nlx:privilege PRIV_NETINET_PF;
+    nlx:securelevel 4;
+    description
+      "Delete addresses from a table; the reply says how many.";
+    input {
+      uses header;
+      uses table-addrs-attrs;
+    }
+    output {
+      uses header;
+      uses table-addrs-attrs;
+    }
+  }
+
+  rpc table-set-addr {
+    nlx:cmd PFNL_CMD_TABLE_SET_ADDR;
+    nlx:do;
+    nlx:privilege PRIV_NETINET_PF;
+    nlx:securelevel 4;
+    description
+      "Replace a table's addresses; the reply says how many were
+       added, deleted and changed.";
+    input {
+      uses header;
+      uses table-addrs-attrs;
+    }
+    output {
+      uses header;
+      uses table-addrs-attrs;
+    }
+  }
+
+  rpc table-get-addr {
+    nlx:cmd PFNL_CMD_TABLE_GET_ADDR;
+    nlx:dump;
+    nlx:privilege PRIV_NETINET_PF;
+    nlx:securelevel 4;
+    description
+      "The addresses of a table: a first message with addr-count,
+       then one per address.";
+    input {
+      uses header;
+      uses table-addrs-attrs;
+    }
+    output {
+      list reply {
+        uses header;
+        uses table-addrs-attrs;
+      }
+    }
+  }
+
+  rpc table-get-astats {
+    nlx:cmd PFNL_CMD_TABLE_GET_ASTATS;
+    nlx:dump;
+    nlx:privilege PRIV_NETINET_PF;
+    nlx:securelevel 4;
+    description
+      "The statistics of a table's addresses: a first message
+       with astats-count, then one per address.";
+    input {
+      uses header;
+      uses table-astats-attrs;
+    }
+    output {
+      list reply {
+        uses header;
+        uses table-astats-attrs;
+      }
+    }
+  }
+
+  rpc table-clear-astats {
+    nlx:cmd PFNL_CMD_TABLE_CLEAR_ASTATS;
+    nlx:dump;
+    nlx:privilege PRIV_NETINET_PF;
+    nlx:securelevel 4;
+    description
+      "Zero the statistics of a table's addresses; the reply says
+       how many in astats-zeroed.";
+    input {
+      uses header;
+      uses table-addrs-attrs;
+    }
+    output {
+      uses header;
+      uses table-astats-attrs;
+    }
+  }
+
+  rpc state-limiter-add {
+    nlx:cmd PFNL_CMD_STATE_LIMITER_ADD;
+    nlx:do;
+    nlx:privilege PRIV_NETINET_PF;
+    nlx:securelevel 3;
+    description
+      "Add a state limiter; the reply has its id.";
+    input {
+      uses header;
+      uses state-limit-attrs;
+    }
+    output {
+      uses header;
+      uses state-limit-attrs;
+    }
+  }
+
+  rpc state-limiter-get {
+    nlx:cmd PFNL_CMD_STATE_LIMITER_GET;
+    nlx:dump;
+    nlx:privilege PRIV_NETINET_PF;
+    nlx:securelevel 4;
+    description
+      "The state limiter id.";
+    input {
+      uses header;
+      uses state-limit-attrs;
+    }
+    output {
+      uses header;
+      uses state-limit-attrs;
+    }
+  }
+
+  rpc state-limiter-nget {
+    nlx:cmd PFNL_CMD_STATE_LIMITER_NGET;
+    nlx:dump;
+    nlx:privilege PRIV_NETINET_PF;
+    nlx:securelevel 4;
+    description
+      "The state limiter named name.";
+    input {
+      uses header;
+      uses state-limit-attrs;
+    }
+    output {
+      uses header;
+      uses state-limit-attrs;
+    }
+  }
+
+  rpc source-limiter-add {
+    nlx:cmd PFNL_CMD_SOURCE_LIMITER_ADD;
+    nlx:do;
+    nlx:privilege PRIV_NETINET_PF;
+    nlx:securelevel 3;
+    description
+      "Add a source limiter; the reply has its id.";
+    input {
+      uses header;
+      uses source-limit-attrs;
+    }
+    output {
+      uses header;
+      uses source-limit-attrs;
+    }
+  }
+
+  rpc source-limiter-get {
+    nlx:cmd PFNL_CMD_SOURCE_LIMITER_GET;
+    nlx:dump;
+    nlx:privilege PRIV_NETINET_PF;
+    nlx:securelevel 4;
+    description
+      "The source limiter id.";
+    input {
+      uses header;
+      uses source-limit-attrs;
+    }
+    output {
+      uses header;
+      uses source-limit-attrs;
+    }
+  }
+
+  rpc source-limiter-nget {
+    nlx:cmd PFNL_CMD_SOURCE_LIMITER_NGET;
+    nlx:dump;
+    nlx:privilege PRIV_NETINET_PF;
+    nlx:securelevel 4;
+    description
+      "The source limiter named name.";
+    input {
+      uses header;
+      uses source-limit-attrs;
+    }
+    output {
+      uses header;
+      uses source-limit-attrs;
+    }
+  }
+
+  rpc source-get {
+    nlx:cmd PFNL_CMD_SOURCE_GET;
+    nlx:dump;
+    nlx:privilege PRIV_NETINET_PF;
+    nlx:securelevel 4;
+    description
+      "The sources of the source limiter id, one message each.";
+    input {
+      uses header;
+      uses source-attrs;
+    }
+    output {
+      list source {
+        uses header;
+        uses source-attrs;
+      }
+    }
+  }
+
+  rpc source-nget {
+    nlx:cmd PFNL_CMD_SOURCE_NGET;
+    nlx:dump;
+    nlx:privilege PRIV_NETINET_PF;
+    nlx:securelevel 4;
+    description
+      "The sources of the source limiter named name.";
+    input {
+      uses header;
+      uses source-attrs;
+    }
+    output {
+      list source {
+        uses header;
+        uses source-attrs;
+      }
+    }
+  }
+
+  rpc source-clear {
+    nlx:cmd PFNL_CMD_SOURCE_CLEAR;
+    nlx:do;
+    nlx:privilege PRIV_NETINET_PF;
+    nlx:securelevel 4;
+    description
+      "Clear a source of a source limiter, or all of them.";
+    input {
+      uses header;
+      uses source-clear-attrs;
+    }
+    output {
+      uses header;
+      uses source-limit-attrs;
+    }
+  }
+
+  rpc table-test-addrs {
+    nlx:cmd PFNL_CMD_TABLE_TEST_ADDRS;
+    nlx:dump;
+    nlx:privilege PRIV_NETINET_PF;
+    nlx:securelevel 4;
+    description
+      "Test addresses against a table: the reply has the matches
+       in astats-count and each address with its feedback.";
+    input {
+      uses header;
+      uses table-addrs-attrs;
+    }
+    output {
+      uses header;
+      uses table-astats-attrs;
+    }
+  }
+
+  rpc ina-define {
+    nlx:cmd PFNL_CMD_INA_DEFINE;
+    nlx:do;
+    nlx:privilege PRIV_NETINET_PF;
+    nlx:securelevel 3;
+    description
+      "Define a table in the inactive ruleset under ticket, with
+       its addresses; the reply says how many tables and addresses
+       were added.";
+    input {
+      uses header;
+      uses ina-define-attrs;
+    }
+    output {
+      uses header;
+      uses ina-define-attrs;
+    }
+  }
+
+  rpc osfp-flush {
+    nlx:cmd PFNL_CMD_OSFP_FLUSH;
+    nlx:do;
+    nlx:privilege PRIV_NETINET_PF;
+    nlx:securelevel 3;
+    description
+      "Flush the OS fingerprints.";
+    input {
+      uses header;
+    }
+  }
+
+  rpc osfp-get {
+    nlx:cmd PFNL_CMD_OSFP_GET;
+    nlx:dump;
+    nlx:privilege PRIV_NETINET_PF;
+    nlx:securelevel 3;
+    description
+      "OS fingerprint idx.";
+    input {
+      uses header;
+      uses osfp-attrs;
+    }
+    output {
+      uses header;
+      uses osfp-attrs;
+    }
+  }
+
+  rpc osfp-add {
+    nlx:cmd PFNL_CMD_OSFP_ADD;
+    nlx:do;
+    nlx:privilege PRIV_NETINET_PF;
+    nlx:securelevel 3;
+    description
+      "Add an OS fingerprint.";
+    input {
+      uses header;
+      uses osfp-attrs;
+    }
+  }
+}

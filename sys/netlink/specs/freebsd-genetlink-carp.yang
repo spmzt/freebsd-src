@@ -1,0 +1,243 @@
+// SPDX-License-Identifier: BSD-2-Clause
+//
+// Copyright (c) 2026 Pouria Mousavizadeh Tehrani <pouria@FreeBSD.org>
+
+module freebsd-genetlink-carp {
+  yang-version 1.1;
+  namespace "urn:freebsd:yang:freebsd-genetlink-carp";
+  prefix carp;
+
+  import freebsd-netlink-extensions {
+    prefix nlx;
+  }
+  import freebsd-netlink-types {
+    prefix nlt;
+  }
+  import freebsd-genetlink {
+    prefix genl;
+  }
+
+  organization
+    "FreeBSD";
+  contact
+    "Pouria Mousavizadeh Tehrani <pouria@FreeBSD.org>";
+  description
+    "The carp generic netlink family, as <netinet/ip_carp_nl.h>
+     defines it: the virtual hosts of carp(4), the Common Address
+     Redundancy Protocol and VRRPv3, on an interface; what
+     ifconfig(8) vhid, advbase, advskew, pass, carpver, vrrpprio
+     and vrrpinterval set and show, and what the SIOCGVH and
+     SIOCSVH ioctls were.";
+  reference
+    "carp(4), ifconfig(8)";
+
+  revision 2026-10-14 {
+    description
+      "Initial revision, for FreeBSD 16.0-CURRENT (main at
+       84f790e5b6cc).";
+  }
+
+  nlx:protocol NETLINK_GENERIC;
+  nlx:family carp;
+  nlx:version 2;
+  nlx:uapi-header "netinet/ip_carp_nl.h";
+
+  typedef command {
+    type enumeration {
+      enum unspec {
+        value 0;
+      }
+      enum get {
+        value 1;
+        description
+          "CARP_NL_CMD_GET: the virtual hosts of an interface.";
+      }
+      enum set {
+        value 2;
+        description
+          "CARP_NL_CMD_SET: create or change one.";
+      }
+    }
+    nlx:width 8;
+    nlx:name-prefix "CARP_NL_CMD_";
+    description
+      "The commands of the family.";
+  }
+
+  typedef state {
+    type enumeration {
+      enum init {
+        value 0;
+        description
+          "INIT: not running.";
+      }
+      enum backup {
+        value 1;
+        description
+          "BACKUP: another host is master.";
+      }
+      enum master {
+        value 2;
+        description
+          "MASTER: this host answers for the addresses.";
+      }
+    }
+    description
+      "The state of a virtual host (CARP_STATES).";
+  }
+
+  typedef version {
+    type enumeration {
+      enum carp {
+        value 2;
+        description
+          "CARP_VERSION_CARP: CARP.";
+      }
+      enum vrrpv3 {
+        value 3;
+        description
+          "CARP_VERSION_VRRPv3: VRRP version 3 (RFC 5798).";
+      }
+    }
+    nlx:width 8;
+    nlx:name-prefix "CARP_VERSION_";
+    description
+      "The protocol a virtual host speaks.";
+  }
+
+  grouping carp-attrs {
+    nlx:name-prefix "CARP_NL_";
+    description
+      "The attributes of a carp message.";
+    leaf vhid {
+      type uint32 {
+        range "0..255";
+      }
+      nlx:attr 1;
+      description
+        "The virtual host.  Sent; read, 0 in a get for every one
+         of the interface.";
+    }
+    leaf state {
+      type state;
+      nlx:attr 2;
+      description
+        "The state.  Sent; read to force one (ifconfig(8) state).";
+    }
+    leaf advbase {
+      type int32;
+      nlx:attr 3;
+      units "seconds";
+      description
+        "CARP: the base advertisement interval.  Sent for CARP;
+         read.";
+    }
+    leaf advskew {
+      type int32 {
+        range "0..240";
+      }
+      nlx:attr 4;
+      description
+        "CARP: the advertisement skew, in 1/256ths of a second.
+         Sent for CARP; read.";
+    }
+    leaf key {
+      type binary {
+        length "0..20";
+      }
+      nlx:attr 5;
+      description
+        "CARP: the SHA-1 hash of the pass phrase.  Sent to a
+         requester with PRIV_NETINET_CARP; read.";
+    }
+    leaf ifindex {
+      type nlt:ifindex;
+      nlx:attr 6;
+      description
+        "The interface, when ifname is absent.  Read.";
+    }
+    leaf addr {
+      type nlt:in-addr;
+      nlx:attr 7;
+      description
+        "CARP: the IPv4 address advertisements are sent to, a
+         unicast peer or the multicast group.  Sent for CARP;
+         read.";
+    }
+    leaf addr6 {
+      type nlt:in6-addr;
+      nlx:attr 8;
+      description
+        "CARP: the IPv6 address advertisements are sent to.  Sent
+         for CARP; read.";
+    }
+    leaf ifname {
+      type nlt:ifname;
+      nlx:attr 9;
+      description
+        "The interface.  Read.";
+    }
+    leaf version {
+      type version;
+      nlx:attr 10;
+      description
+        "The protocol.  Sent; read.";
+    }
+    leaf vrrp-priority {
+      type uint8;
+      nlx:attr 11;
+      description
+        "VRRPv3: the priority.  Sent for VRRPv3; read.";
+    }
+    leaf vrrp-adv-inter {
+      type uint16 {
+        range "0..4095";
+      }
+      nlx:attr 12;
+      units "centiseconds";
+      description
+        "VRRPv3: the advertisement interval, a 12-bit field.  Sent
+         for VRRPv3; read.";
+    }
+  }
+
+  grouping carp-message {
+    nlx:fixed-header genl:genlmsghdr;
+    uses genl:genlmsghdr;
+    description
+      "A carp message.";
+    uses carp-attrs;
+  }
+
+  rpc get {
+    nlx:cmd CARP_NL_CMD_GET;
+    nlx:do;
+    nlx:dump;
+    description
+      "List the virtual hosts of the interface ifname or ifindex,
+       or the one vhid; the reply is multipart whether or not
+       NLM_F_DUMP was set.";
+    input {
+      uses carp-message;
+    }
+    output {
+      list vhost {
+        description
+          "One CARP_NL_CMD_GET message per virtual host.";
+        uses carp-message;
+      }
+    }
+  }
+
+  rpc set {
+    nlx:cmd CARP_NL_CMD_SET;
+    nlx:do;
+    nlx:privilege PRIV_NETINET_CARP;
+    description
+      "Create the virtual host vhid on the interface, or change
+       it: the version and its parameters, the key, the state.";
+    input {
+      uses carp-message;
+    }
+  }
+}

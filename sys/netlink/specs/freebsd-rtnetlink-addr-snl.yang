@@ -1,0 +1,71 @@
+// SPDX-License-Identifier: BSD-2-Clause
+//
+// Copyright (c) 2026 Pouria Mousavizadeh Tehrani <pouria@FreeBSD.org>
+
+module freebsd-rtnetlink-addr-snl {
+  yang-version 1.1;
+  namespace "urn:freebsd:yang:freebsd-rtnetlink-addr-snl";
+  prefix rtaddr-snl;
+
+  import freebsd-netlink-snl {
+    prefix snl;
+  }
+  import freebsd-rtnetlink-addr {
+    prefix rtaddr;
+  }
+
+  organization
+    "FreeBSD";
+  contact
+    "Pouria Mousavizadeh Tehrani <pouria@FreeBSD.org>";
+  description
+    "The snl(3) parser of the address messages: snl_rtm_addr_parser
+     and struct snl_parsed_addr of
+     <netlink/netlink_snl_route_parsers.h>.";
+
+  revision 2026-10-14 {
+    description
+      "Initial revision.";
+  }
+
+  snl:parser snl_rtm_addr_parser {
+    snl:doc "RTM_<NEW|DEL|GET>ADDR message parser";
+    snl:struct snl_parsed_addr;
+    snl:grouping rtaddr:addr-message;
+    snl:nest freebsd {
+      snl:name _addr_fbsd_parser;
+    }
+    snl:member ifa_family {
+      snl:field ifa-family;
+    }
+    snl:member ifa_prefixlen {
+      snl:field ifa-prefixlen;
+    }
+    snl:member ifa_index {
+      snl:field ifa-index;
+    }
+    snl:member ifa_local {
+      snl:attr local;
+      snl:scope-id ifa_index;
+    }
+    snl:member ifa_address {
+      snl:attr address;
+      snl:scope-id ifa_index;
+    }
+    snl:member ifa_broadcast {
+      snl:attr broadcast;
+    }
+    snl:member ifa_label {
+      snl:attr label;
+    }
+    snl:member ifa_cacheinfo {
+      snl:attr cacheinfo;
+    }
+    snl:member ifaf_vhid {
+      snl:attr freebsd/vhid;
+    }
+    snl:member ifaf_flags {
+      snl:attr freebsd/flags;
+    }
+  }
+}

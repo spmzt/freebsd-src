@@ -1,0 +1,121 @@
+// SPDX-License-Identifier: BSD-2-Clause
+//
+// Copyright (c) 2026 Pouria Mousavizadeh Tehrani <pouria@FreeBSD.org>
+
+module freebsd-genetlink-rpc {
+  yang-version 1.1;
+  namespace "urn:freebsd:yang:freebsd-genetlink-rpc";
+  prefix rpcnl;
+
+  import freebsd-netlink-extensions {
+    prefix nlx;
+  }
+  import freebsd-genetlink {
+    prefix genl;
+  }
+
+  organization
+    "FreeBSD";
+  contact
+    "Pouria Mousavizadeh Tehrani <pouria@FreeBSD.org>";
+  description
+    "The rpc generic netlink family, as <rpc/clnt_nl.h> defines
+     it: the kernel's Sun RPC clients (the NFS ones: kgssapi, the
+     NLM binding, the TLS client and server) calling a daemon in
+     userland.  Each client makes a multicast group of its own;
+     the kernel multicasts a call on it and waits for a reply,
+     which the daemon sends with the group's number.  The payload
+     is XDR, as for any RPC.";
+  reference
+    "rpc_clnt_create(3), svc_nl(3)";
+
+  revision 2026-10-14 {
+    description
+      "Initial revision, for FreeBSD 16.0-CURRENT (main at
+       84f790e5b6cc).";
+  }
+
+  nlx:protocol NETLINK_GENERIC;
+  nlx:family rpc;
+  nlx:version 1;
+  nlx:uapi-header "rpc/clnt_nl.h";
+
+  typedef command {
+    type enumeration {
+      enum request {
+        value 1;
+        description
+          "RPCNL_REQUEST: a call, from the kernel.";
+      }
+      enum reply {
+        value 2;
+        description
+          "RPCNL_REPLY: its result, from the daemon.";
+      }
+    }
+    nlx:width 8;
+    nlx:name-prefix "RPCNL_";
+    description
+      "The commands of the family.";
+  }
+
+  grouping rpc-attrs {
+    nlx:name-prefix "RPCNL_";
+    description
+      "The attributes of the family.";
+    leaf request-group {
+      type uint32;
+      nlx:attr 1;
+      description
+        "In a call, the client's group.";
+    }
+    leaf request-body {
+      type binary;
+      nlx:attr 2;
+      description
+        "In a call, the XDR-encoded call.";
+    }
+    leaf reply-group {
+      type uint32;
+      nlx:attr 3;
+      description
+        "In a reply, the client's group.";
+    }
+    leaf reply-body {
+      type binary;
+      nlx:attr 4;
+      description
+        "In a reply, the XDR-encoded result; at most 65531 bytes,
+         an attribute's limit.";
+    }
+  }
+
+  grouping rpc-message {
+    nlx:fixed-header genl:genlmsghdr;
+    uses genl:genlmsghdr;
+    description
+      "A message of the family; the netlink sequence number is the
+       RPC transaction id (xid).";
+    uses rpc-attrs;
+  }
+
+  notification request {
+    nlx:cmd RPCNL_REQUEST;
+    nlx:group client;
+    description
+      "A call, on the client's own group.";
+    uses rpc-message;
+  }
+
+  rpc reply {
+    nlx:cmd RPCNL_REPLY;
+    nlx:do;
+    nlx:privilege PRIV_NFS_DAEMON;
+    description
+      "The result of a call, with the sequence number of the call
+       and the client's group.";
+    input {
+      uses rpc-message;
+    }
+  }
+}

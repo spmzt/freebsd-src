@@ -1,0 +1,335 @@
+// SPDX-License-Identifier: BSD-2-Clause
+//
+// Copyright (c) 2026 Pouria Mousavizadeh Tehrani <pouria@FreeBSD.org>
+
+module freebsd-genetlink-pflow {
+  yang-version 1.1;
+  namespace "urn:freebsd:yang:freebsd-genetlink-pflow";
+  prefix pflow;
+
+  import freebsd-netlink-extensions {
+    prefix nlx;
+  }
+  import freebsd-netlink-types {
+    prefix nlt;
+  }
+  import freebsd-genetlink {
+    prefix genl;
+  }
+
+  organization
+    "FreeBSD";
+  contact
+    "Pouria Mousavizadeh Tehrani <pouria@FreeBSD.org>";
+  description
+    "The pflow generic netlink family, as <net/pflow.h> defines
+     it: the NetFlow and IPFIX exporters of pflow(4), which
+     pflowctl(8) creates, configures, lists and destroys.";
+  reference
+    "pflow(4), pflowctl(8)";
+
+  revision 2026-10-14 {
+    description
+      "Initial revision, for FreeBSD 16.0-CURRENT (main at
+       84f790e5b6cc).";
+  }
+
+  nlx:protocol NETLINK_GENERIC;
+  nlx:family pflow;
+  nlx:version 2;
+  nlx:uapi-header "net/pflow.h";
+
+  typedef command {
+    type enumeration {
+      enum unspec {
+        value 0;
+      }
+      enum list {
+        value 1;
+        description
+          "PFLOWNL_CMD_LIST: the exporters' ids.";
+      }
+      enum create {
+        value 2;
+        description
+          "PFLOWNL_CMD_CREATE: create an exporter.";
+      }
+      enum del {
+        value 3;
+        description
+          "PFLOWNL_CMD_DEL: destroy one.";
+      }
+      enum set {
+        value 4;
+        description
+          "PFLOWNL_CMD_SET: configure one.";
+      }
+      enum get {
+        value 5;
+        description
+          "PFLOWNL_CMD_GET: one exporter's configuration.";
+      }
+    }
+    nlx:width 8;
+    nlx:name-prefix "PFLOWNL_CMD_";
+    description
+      "The commands of the family; each needs PRIV_NETINET_PF.";
+  }
+
+  typedef flow-protocol {
+    type enumeration {
+      enum netflow-5 {
+        value 5;
+        description
+          "PFLOW_PROTO_5: NetFlow version 5, the default.";
+      }
+      enum ipfix {
+        value 10;
+        description
+          "PFLOW_PROTO_10: IPFIX (NetFlow version 10).";
+      }
+    }
+    nlx:width 16;
+    description
+      "The export protocol.";
+  }
+
+  grouping sockaddr-attrs {
+    nlx:name-prefix "PFLOWNL_ADDR_";
+    description
+      "A socket address as a nest: the family, the port, and the
+       address of that family.";
+    leaf family {
+      type nlt:address-family;
+      nlx:attr 1;
+      description
+        "inet or inet6.";
+    }
+    leaf port {
+      type uint16;
+      nlx:attr 2;
+      description
+        "The UDP port, in network byte order.";
+    }
+    leaf ip {
+      type nlt:in-addr;
+      nlx:attr 3;
+      description
+        "The IPv4 address.";
+    }
+    leaf ip6 {
+      type nlt:in6-addr;
+      nlx:attr 4;
+      description
+        "The IPv6 address.";
+    }
+  }
+
+  grouping list-attrs {
+    nlx:name-prefix "PFLOWNL_L_";
+    description
+      "The attributes of a list reply.";
+    leaf id {
+      type uint32;
+      nlx:attr 1;
+      description
+        "An exporter's id.";
+    }
+  }
+
+  grouping create-attrs {
+    nlx:name-prefix "PFLOWNL_CREATE_";
+    description
+      "The attributes of a create reply.";
+    leaf id {
+      type int32;
+      nlx:attr 1;
+      description
+        "The new exporter's id.";
+    }
+  }
+
+  grouping del-attrs {
+    nlx:name-prefix "PFLOWNL_DEL_";
+    description
+      "The attributes of a del request.";
+    leaf id {
+      type uint32;
+      nlx:attr 1;
+      description
+        "The exporter to destroy.";
+    }
+  }
+
+  grouping get-attrs {
+    nlx:name-prefix "PFLOWNL_GET_";
+    description
+      "The attributes of a get request and reply.";
+    leaf id {
+      type uint32;
+      nlx:attr 1;
+      description
+        "The exporter.  Read; sent.";
+    }
+    leaf version {
+      type flow-protocol;
+      nlx:attr 2;
+      description
+        "The export protocol.  Sent.";
+    }
+    container src {
+      nlx:attr 3;
+      description
+        "The source address and port of the export packets.  Sent
+         when set.";
+      uses sockaddr-attrs;
+    }
+    container dst {
+      nlx:attr 4;
+      description
+        "The collector's address and port.  Sent when set.";
+      uses sockaddr-attrs;
+    }
+    leaf observation-domain {
+      type uint32;
+      nlx:attr 5;
+      description
+        "The IPFIX observation domain.  Sent.";
+    }
+    leaf socket-status {
+      type uint8;
+      nlx:attr 6;
+      description
+        "1 when the export socket is open, 0 otherwise.  Sent.";
+    }
+  }
+
+  grouping set-attrs {
+    nlx:name-prefix "PFLOWNL_SET_";
+    description
+      "The attributes of a set request.";
+    leaf id {
+      type uint32;
+      nlx:attr 1;
+      description
+        "The exporter.";
+    }
+    leaf version {
+      type flow-protocol;
+      nlx:attr 2;
+      description
+        "The export protocol.";
+    }
+    container src {
+      nlx:attr 3;
+      description
+        "The source address and port.";
+      uses sockaddr-attrs;
+    }
+    container dst {
+      nlx:attr 4;
+      description
+        "The collector's address and port.";
+      uses sockaddr-attrs;
+    }
+    leaf observation-domain {
+      type uint32;
+      nlx:attr 5;
+      description
+        "The IPFIX observation domain.";
+    }
+  }
+
+  grouping list-message {
+    nlx:fixed-header genl:genlmsghdr;
+    uses genl:genlmsghdr;
+    uses list-attrs;
+  }
+
+  grouping create-message {
+    nlx:fixed-header genl:genlmsghdr;
+    uses genl:genlmsghdr;
+    uses create-attrs;
+  }
+
+  grouping del-message {
+    nlx:fixed-header genl:genlmsghdr;
+    uses genl:genlmsghdr;
+    uses del-attrs;
+  }
+
+  grouping get-message {
+    nlx:fixed-header genl:genlmsghdr;
+    uses genl:genlmsghdr;
+    uses get-attrs;
+  }
+
+  grouping set-message {
+    nlx:fixed-header genl:genlmsghdr;
+    uses genl:genlmsghdr;
+    uses set-attrs;
+  }
+
+  rpc list {
+    nlx:cmd PFLOWNL_CMD_LIST;
+    nlx:do;
+    nlx:dump;
+    nlx:privilege PRIV_NETINET_PF;
+    description
+      "List the exporters, one reply message each.";
+    output {
+      list exporter {
+        uses list-message;
+      }
+    }
+  }
+
+  rpc create {
+    nlx:cmd PFLOWNL_CMD_CREATE;
+    nlx:do;
+    nlx:privilege PRIV_NETINET_PF;
+    description
+      "Create an exporter; the reply carries its id.";
+    output {
+      uses create-message;
+    }
+  }
+
+  rpc del {
+    nlx:cmd PFLOWNL_CMD_DEL;
+    nlx:do;
+    nlx:privilege PRIV_NETINET_PF;
+    description
+      "Destroy the exporter id.";
+    input {
+      uses del-message;
+    }
+  }
+
+  rpc get {
+    nlx:cmd PFLOWNL_CMD_GET;
+    nlx:dump;
+    nlx:privilege PRIV_NETINET_PF;
+    description
+      "Get the configuration of the exporter id.";
+    input {
+      uses get-message;
+    }
+    output {
+      uses get-message;
+    }
+  }
+
+  rpc set {
+    nlx:cmd PFLOWNL_CMD_SET;
+    nlx:do;
+    nlx:privilege PRIV_NETINET_PF;
+    description
+      "Configure the exporter id: the protocol, the addresses,
+       the observation domain; the socket is opened when both
+       addresses are set.";
+    input {
+      uses set-message;
+    }
+  }
+}

@@ -1,0 +1,1884 @@
+// SPDX-License-Identifier: BSD-2-Clause
+//
+// Copyright (c) 2026 Pouria Mousavizadeh Tehrani <pouria@FreeBSD.org>
+
+module freebsd-rtnetlink-link {
+  yang-version 1.1;
+  namespace "urn:freebsd:yang:freebsd-rtnetlink-link";
+  prefix rtlink;
+
+  import freebsd-netlink-extensions {
+    prefix nlx;
+  }
+  import freebsd-netlink-types {
+    prefix nlt;
+  }
+  import freebsd-netlink {
+    prefix nl;
+  }
+
+  organization
+    "FreeBSD";
+  contact
+    "Pouria Mousavizadeh Tehrani <pouria@FreeBSD.org>";
+  description
+    "The interface messages of FreeBSD's NETLINK_ROUTE protocol,
+     RTM_NEWLINK, RTM_DELLINK and RTM_GETLINK, as
+     <netlink/route/interface.h> defines them: the fixed header
+     (struct ifinfomsg), the IFLA_ attributes, FreeBSD's own under
+     IFLA_FREEBSD, the per-kind data of cloned interfaces under
+     IFLA_LINKINFO, and the SR-IOV virtual functions a RTM_GETLINK
+     with RTEXT_FILTER_VF reports.
+
+     Each attribute says whether the kernel sends it in a reply or a
+     notification, reads it in a request, both, or neither (defined
+     for Linux compatibility only).";
+  reference
+    "netlink(4), ifconfig(8)";
+
+  revision 2026-10-14 {
+    description
+      "Initial revision, for FreeBSD 16.0-CURRENT (main at
+       84f790e5b6cc).";
+  }
+
+  nlx:protocol NETLINK_ROUTE;
+  nlx:uapi-header "netlink/route/interface.h";
+
+  typedef interface-flags {
+    type bits {
+      bit up {
+        position 0;
+        description
+          "IFF_UP: administratively up.";
+      }
+      bit broadcast {
+        position 1;
+        description
+          "IFF_BROADCAST: has a broadcast address.";
+      }
+      bit debug {
+        position 2;
+        description
+          "IFF_DEBUG.";
+      }
+      bit loopback {
+        position 3;
+        description
+          "IFF_LOOPBACK.";
+      }
+      bit pointopoint {
+        position 4;
+        description
+          "IFF_POINTOPOINT.";
+      }
+      bit needsepoch {
+        position 5;
+        description
+          "IFF_NEEDSEPOCH: the driver calls if_input outside the
+           network epoch.";
+      }
+      bit drv-running {
+        position 6;
+        description
+          "IFF_DRV_RUNNING: the driver has its resources.";
+      }
+      bit noarp {
+        position 7;
+        description
+          "IFF_NOARP.";
+      }
+      bit promisc {
+        position 8;
+        description
+          "IFF_PROMISC.";
+      }
+      bit allmulti {
+        position 9;
+        description
+          "IFF_ALLMULTI.";
+      }
+      bit drv-oactive {
+        position 10;
+        description
+          "IFF_DRV_OACTIVE: the transmit queue is full.";
+      }
+      bit simplex {
+        position 11;
+        description
+          "IFF_SIMPLEX.";
+      }
+      bit link0 {
+        position 12;
+        description
+          "IFF_LINK0.";
+      }
+      bit link1 {
+        position 13;
+        description
+          "IFF_LINK1.";
+      }
+      bit link2 {
+        position 14;
+        description
+          "IFF_LINK2.";
+      }
+      bit multicast {
+        position 15;
+        description
+          "IFF_MULTICAST.";
+      }
+      bit cantconfig {
+        position 16;
+        description
+          "IFF_CANTCONFIG.";
+      }
+      bit ppromisc {
+        position 17;
+        description
+          "IFF_PPROMISC: promiscuous mode the user asked for.";
+      }
+      bit monitor {
+        position 18;
+        description
+          "IFF_MONITOR.";
+      }
+      bit staticarp {
+        position 19;
+        description
+          "IFF_STATICARP.";
+      }
+      bit stickyarp {
+        position 20;
+        description
+          "IFF_STICKYARP.";
+      }
+      bit dying {
+        position 21;
+        description
+          "IFF_DYING: being destroyed.";
+      }
+      bit renaming {
+        position 22;
+        description
+          "IFF_RENAMING: being renamed.";
+      }
+      bit pallmulti {
+        position 23;
+        description
+          "IFF_PALLMULTI: all-multicast mode the user asked for.";
+      }
+      bit lower-up {
+        position 24;
+        description
+          "IFF_LOWER_UP (IFF_NETLINK_1): the link is up, set by
+           netlink when the operational state is up.";
+      }
+    }
+    nlx:name-prefix "IFF_";
+    description
+      "The flags of an interface, IFF_* of <net/if.h>, as ifi_flags
+       carries them: if_flags and if_drv_flags together.";
+  }
+
+  typedef operational-state {
+    type enumeration {
+      enum unknown {
+        value 0;
+        description
+          "IF_OPER_UNKNOWN: cannot be determined.";
+      }
+      enum notpresent {
+        value 1;
+        description
+          "IF_OPER_NOTPRESENT: a component is missing.";
+      }
+      enum down {
+        value 2;
+        description
+          "IF_OPER_DOWN.";
+      }
+      enum lowerlayerdown {
+        value 3;
+        description
+          "IF_OPER_LOWERLAYERDOWN: a lower interface is down.";
+      }
+      enum testing {
+        value 4;
+        description
+          "IF_OPER_TESTING.";
+      }
+      enum dormant {
+        value 5;
+        description
+          "IF_OPER_DORMANT: up but waiting, as for 802.1X.";
+      }
+      enum up {
+        value 6;
+        description
+          "IF_OPER_UP: ready to pass packets.";
+      }
+    }
+    nlx:width 8;
+    nlx:name-prefix "IF_OPER_";
+    description
+      "The operational state of an interface, ifOperStatus of RFC
+       2863.  For Ethernet and VLAN interfaces the kernel derives it
+       from the link state when the interface is up; for the others
+       up is up and down is down.";
+  }
+
+  typedef capability {
+    type bits {
+      bit rxcsum {
+        position 0;
+      }
+      bit txcsum {
+        position 1;
+      }
+      bit netcons {
+        position 2;
+      }
+      bit vlan-mtu {
+        position 3;
+      }
+      bit vlan-hwtagging {
+        position 4;
+      }
+      bit jumbo-mtu {
+        position 5;
+      }
+      bit polling {
+        position 6;
+      }
+      bit vlan-hwcsum {
+        position 7;
+      }
+      bit tso4 {
+        position 8;
+      }
+      bit tso6 {
+        position 9;
+      }
+      bit lro {
+        position 10;
+      }
+      bit wol-ucast {
+        position 11;
+      }
+      bit wol-mcast {
+        position 12;
+      }
+      bit wol-magic {
+        position 13;
+      }
+      bit toe4 {
+        position 14;
+      }
+      bit toe6 {
+        position 15;
+      }
+      bit vlan-hwfilter {
+        position 16;
+      }
+      bit nv {
+        position 17;
+      }
+      bit vlan-hwtso {
+        position 18;
+      }
+      bit linkstate {
+        position 19;
+      }
+      bit netmap {
+        position 20;
+      }
+      bit rxcsum-ipv6 {
+        position 21;
+      }
+      bit txcsum-ipv6 {
+        position 22;
+      }
+      bit hwstats {
+        position 23;
+      }
+      bit txrtlmt {
+        position 24;
+      }
+      bit hwrxtstmp {
+        position 25;
+      }
+      bit mextpg {
+        position 26;
+      }
+      bit txtls4 {
+        position 27;
+      }
+      bit txtls6 {
+        position 28;
+      }
+      bit vxlan-hwcsum {
+        position 29;
+      }
+      bit vxlan-hwtso {
+        position 30;
+      }
+      bit txtls-rtlmt {
+        position 31;
+      }
+      bit rxtls4 {
+        position 32;
+      }
+      bit rxtls6 {
+        position 33;
+      }
+      bit ipsec-offload {
+        position 34;
+      }
+      bit geneve-hwcsum {
+        position 35;
+      }
+      bit geneve-hwtso {
+        position 36;
+      }
+    }
+    nlx:width 64;
+    nlx:name-prefix "IFCAP_B_";
+    description
+      "The capabilities of an interface, IFCAP_B_* of <net/if.h>, as
+       the bits of the IFLAF_CAPS bitset are numbered: those from 32
+       are if_capabilities2.  The bitset's mask is what the driver
+       offers (if_capabilities), its value what is enabled
+       (if_capenable).";
+  }
+
+  typedef external-filter-mask {
+    type bits {
+      bit vf {
+        position 0;
+        description
+          "RTEXT_FILTER_VF: report the SR-IOV virtual functions,
+           as num-vf, freebsd/vf-status and vf.";
+      }
+    }
+    nlx:name-prefix "RTEXT_FILTER_";
+    description
+      "What a RTM_GETLINK request asks for beyond the basics, in
+       IFLA_EXT_MASK.";
+  }
+
+  typedef tunnel-encapsulation {
+    type enumeration {
+      enum none {
+        value 0;
+        description
+          "IFLA_TUNNEL_NONE: plain GRE over IP.";
+      }
+      enum gre-udp {
+        value 1;
+        description
+          "IFLA_TUNNEL_GRE_UDP: GRE in UDP (RFC 8086).";
+      }
+    }
+    nlx:name-prefix "IFLA_TUNNEL_";
+    description
+      "The encapsulation of a gre(4) tunnel.";
+  }
+
+  typedef geneve-df {
+    type enumeration {
+      enum unset {
+        value 0;
+        description
+          "IFLA_GENEVE_DF_UNSET: do not set the don't-fragment
+           bit.";
+      }
+      enum set {
+        value 1;
+        description
+          "IFLA_GENEVE_DF_SET: set it.";
+      }
+      enum inherit {
+        value 2;
+        description
+          "IFLA_GENEVE_DF_INHERIT: copy the inner packet's.";
+      }
+    }
+    nlx:width 8;
+    nlx:name-prefix "IFLA_GENEVE_DF_";
+    description
+      "How a geneve(4) interface sets the don't-fragment bit of the
+       outer IPv4 header.";
+  }
+
+  typedef vf-link-state {
+    type enumeration {
+      enum unknown {
+        value 0;
+        description
+          "IFLAF_VF_LINK_UNKNOWN.";
+      }
+      enum down {
+        value 1;
+        description
+          "IFLAF_VF_LINK_DOWN.";
+      }
+      enum up {
+        value 2;
+        description
+          "IFLAF_VF_LINK_UP.";
+      }
+      enum auto {
+        value 3;
+        description
+          "IFLAF_VF_LINK_AUTO: follows the physical function's.";
+      }
+    }
+    nlx:width 8;
+    nlx:name-prefix "IFLAF_VF_LINK_";
+    description
+      "The link state of a physical function, or the policy a
+       virtual function's follows.";
+  }
+
+  typedef vf-vlan-mode {
+    type enumeration {
+      enum unknown {
+        value 0;
+        description
+          "IFLAF_VF_VLAN_UNKNOWN.";
+      }
+      enum access {
+        value 1;
+        description
+          "IFLAF_VF_VLAN_ACCESS: one VLAN, tagged by the hardware.";
+      }
+      enum trunk {
+        value 2;
+        description
+          "IFLAF_VF_VLAN_TRUNK: tagged frames pass through.";
+      }
+    }
+    nlx:width 8;
+    nlx:name-prefix "IFLAF_VF_VLAN_";
+    description
+      "How a virtual function handles VLAN tags.";
+  }
+
+  grouping ifinfomsg {
+    nlx:struct ifinfomsg;
+    description
+      "The fixed header of an interface message (struct
+       ifinfomsg).";
+    leaf ifi-family {
+      type nlt:address-family;
+      description
+        "AF_UNSPEC; not used.";
+    }
+    leaf __ifi-pad {
+      type uint8;
+      description
+        "Zero.";
+    }
+    leaf ifi-type {
+      type uint16;
+      description
+        "The interface type, IFT_* of <net/if_types.h> (IFT_ETHER,
+         IFT_LOOP, IFT_L2VLAN, IFT_BRIDGE ...): what if_gettype(9)
+         gives.  Zero in a request.";
+    }
+    leaf ifi-index {
+      type int32;
+      description
+        "The interface index.  In a request, the interface to get,
+         modify or destroy; 0 to go by name.";
+    }
+    leaf ifi-flags {
+      type interface-flags;
+      description
+        "The interface's flags, with lower-up when it is
+         operationally up.  Zero in a request.";
+    }
+    leaf ifi-change {
+      type interface-flags;
+      description
+        "In a notification of a change, the flags that changed;
+         zero in a reply and in a request.";
+    }
+  }
+
+  grouping rtnl-link-stats {
+    nlx:struct rtnl_link_stats;
+    description
+      "The 32-bit counters of IFLA_STATS (struct rtnl_link_stats),
+       the same as rtnl-link-stats64 narrowed; not sent.";
+    leaf rx-packets {
+      type uint32;
+    }
+    leaf tx-packets {
+      type uint32;
+    }
+    leaf rx-bytes {
+      type uint32;
+    }
+    leaf tx-bytes {
+      type uint32;
+    }
+    leaf rx-errors {
+      type uint32;
+    }
+    leaf tx-errors {
+      type uint32;
+    }
+    leaf rx-dropped {
+      type uint32;
+    }
+    leaf tx-dropped {
+      type uint32;
+    }
+    leaf multicast {
+      type uint32;
+    }
+    leaf collisions {
+      type uint32;
+    }
+    leaf rx-length-errors {
+      type uint32;
+    }
+    leaf rx-over-errors {
+      type uint32;
+    }
+    leaf rx-crc-errors {
+      type uint32;
+    }
+    leaf rx-frame-errors {
+      type uint32;
+    }
+    leaf rx-fifo-errors {
+      type uint32;
+    }
+    leaf rx-missed-errors {
+      type uint32;
+    }
+    leaf tx-aborted-errors {
+      type uint32;
+    }
+    leaf tx-carrier-errors {
+      type uint32;
+    }
+    leaf tx-fifo-errors {
+      type uint32;
+    }
+    leaf tx-heartbeat-errors {
+      type uint32;
+    }
+    leaf tx-window-errors {
+      type uint32;
+    }
+    leaf rx-compressed {
+      type uint32;
+    }
+    leaf tx-compressed {
+      type uint32;
+    }
+    leaf rx-nohandler {
+      type uint32;
+    }
+  }
+
+  grouping rtnl-link-stats64 {
+    nlx:struct rtnl_link_stats64;
+    description
+      "The counters of IFLA_STATS64 (struct rtnl_link_stats64),
+       from the if_data counters (IFCOUNTER_*); the ones FreeBSD
+       does not keep are zero.";
+    leaf rx-packets {
+      type uint64;
+      description
+        "IFCOUNTER_IPACKETS.";
+    }
+    leaf tx-packets {
+      type uint64;
+      description
+        "IFCOUNTER_OPACKETS.";
+    }
+    leaf rx-bytes {
+      type uint64;
+      description
+        "IFCOUNTER_IBYTES.";
+    }
+    leaf tx-bytes {
+      type uint64;
+      description
+        "IFCOUNTER_OBYTES.";
+    }
+    leaf rx-errors {
+      type uint64;
+      description
+        "IFCOUNTER_IERRORS.";
+    }
+    leaf tx-errors {
+      type uint64;
+      description
+        "IFCOUNTER_OERRORS.";
+    }
+    leaf rx-dropped {
+      type uint64;
+      description
+        "IFCOUNTER_IQDROPS: input dropped for want of space.";
+    }
+    leaf tx-dropped {
+      type uint64;
+      description
+        "IFCOUNTER_OQDROPS.";
+    }
+    leaf multicast {
+      type uint64;
+      description
+        "IFCOUNTER_IMCASTS: multicast packets received.";
+    }
+    leaf collisions {
+      type uint64;
+      description
+        "Not kept.";
+    }
+    leaf rx-length-errors {
+      type uint64;
+      description
+        "Not kept.";
+    }
+    leaf rx-over-errors {
+      type uint64;
+      description
+        "Not kept.";
+    }
+    leaf rx-crc-errors {
+      type uint64;
+      description
+        "Not kept.";
+    }
+    leaf rx-frame-errors {
+      type uint64;
+      description
+        "Not kept.";
+    }
+    leaf rx-fifo-errors {
+      type uint64;
+      description
+        "Not kept.";
+    }
+    leaf rx-missed-errors {
+      type uint64;
+      description
+        "Not kept.";
+    }
+    leaf tx-aborted-errors {
+      type uint64;
+      description
+        "Not kept.";
+    }
+    leaf tx-carrier-errors {
+      type uint64;
+      description
+        "Not kept.";
+    }
+    leaf tx-fifo-errors {
+      type uint64;
+      description
+        "Not kept.";
+    }
+    leaf tx-heartbeat-errors {
+      type uint64;
+      description
+        "Not kept.";
+    }
+    leaf tx-window-errors {
+      type uint64;
+      description
+        "Not kept.";
+    }
+    leaf rx-compressed {
+      type uint64;
+      description
+        "Not kept.";
+    }
+    leaf tx-compressed {
+      type uint64;
+      description
+        "Not kept.";
+    }
+    leaf rx-nohandler {
+      type uint64;
+      description
+        "IFCOUNTER_NOPROTO: dropped for want of a protocol.";
+    }
+  }
+
+  grouping ifla-vlan-flags {
+    nlx:struct ifla_vlan_flags;
+    description
+      "IFLA_VLAN_FLAGS (struct ifla_vlan_flags); accepted and
+       ignored.";
+    leaf flags {
+      type uint32;
+      description
+        "The flags.";
+    }
+    leaf mask {
+      type uint32;
+      description
+        "The flags to change.";
+    }
+  }
+
+  grouping ifla-geneve-port-range {
+    nlx:struct ifla_geneve_port_range;
+    description
+      "The UDP source ports a geneve(4) interface sends from (struct
+       ifla_geneve_port_range).";
+    leaf low {
+      type uint16;
+      description
+        "The first port.";
+    }
+    leaf high {
+      type uint16;
+      description
+        "The last port.";
+    }
+  }
+
+  grouping vlan-attrs {
+    nlx:name-prefix "IFLA_VLAN_";
+    description
+      "The IFLA_INFO_DATA of a vlan(4) interface.";
+    leaf id {
+      type uint16 {
+        range "0..4095";
+      }
+      nlx:attr 1;
+      description
+        "The VLAN tag.  Read when creating or modifying, sent.";
+    }
+    container flags {
+      nlx:attr 2;
+      description
+        "Read and ignored.";
+      uses ifla-vlan-flags;
+    }
+    leaf egress-qos {
+      type binary;
+      nlx:attr 3;
+      description
+        "Not supported.";
+    }
+    leaf ingress-qos {
+      type binary;
+      nlx:attr 4;
+      description
+        "Not supported.";
+    }
+    leaf protocol {
+      type uint16;
+      nlx:attr 5;
+      description
+        "The EtherType of the tag in host byte order: 0x8100
+         (ETHERTYPE_VLAN, the default) or 0x88a8 (ETHERTYPE_QINQ).
+         Read when creating or modifying, sent.";
+    }
+  }
+
+  grouping iptun-attrs {
+    nlx:name-prefix "IFLA_IPTUN_";
+    description
+      "The IFLA_INFO_DATA of a gif(4) interface.";
+    leaf local {
+      type nlt:ip-address;
+      nlx:attr 1;
+      description
+        "The tunnel's local address.  Read with remote when
+         modifying (ifconfig(8) tunnel), sent when set.";
+    }
+    leaf remote {
+      type nlt:ip-address;
+      nlx:attr 2;
+      description
+        "The tunnel's remote address.  Read with local, sent when
+         set.";
+    }
+    leaf flags {
+      type uint32;
+      nlx:attr 3;
+      description
+        "The gif options: GIF_NOCLAMP (1), GIF_IGNORE_SOURCE (2) of
+         <net/if_gif.h>.  Read when modifying, sent.";
+    }
+  }
+
+  grouping gre-attrs {
+    nlx:name-prefix "IFLA_GRE_";
+    description
+      "The IFLA_INFO_DATA of a gre(4) interface.";
+    leaf local {
+      type nlt:ip-address;
+      nlx:attr 1;
+      description
+        "The tunnel's local address.  Read with remote when
+         modifying, sent when set.";
+    }
+    leaf remote {
+      type nlt:ip-address;
+      nlx:attr 2;
+      description
+        "The tunnel's remote address.  Read with local, sent when
+         set.";
+    }
+    leaf flags {
+      type uint32;
+      nlx:attr 3;
+      description
+        "The gre options: GRE_ENABLE_CSUM (1), GRE_ENABLE_SEQ (2),
+         GRE_UDPENCAP (4) of <net/if_gre.h>.  Read when modifying,
+         sent.";
+    }
+    leaf okey {
+      type uint32;
+      nlx:attr 4;
+      description
+        "The GRE key (ifconfig(8) grekey).  Read when modifying,
+         sent.";
+    }
+    leaf encap-type {
+      type tunnel-encapsulation;
+      nlx:attr 5;
+      description
+        "The encapsulation.  Read when modifying, sent.";
+    }
+    leaf encap-sport {
+      type uint16;
+      nlx:attr 6;
+      description
+        "The UDP source port of GRE in UDP (ifconfig(8) udpport).
+         Read when modifying, sent.";
+    }
+  }
+
+  grouping geneve-attrs {
+    nlx:name-prefix "IFLA_GENEVE_";
+    description
+      "The IFLA_INFO_DATA of a geneve(4) interface.  Each is read
+       when creating or modifying and sent, unless said.";
+    leaf id {
+      type uint32 {
+        range "0..16777215";
+      }
+      nlx:attr 1;
+      description
+        "The virtual network identifier (VNI).";
+    }
+    leaf protocol {
+      type uint16;
+      nlx:attr 2;
+      description
+        "The Geneve protocol type of the payload (ETHERTYPE_TRANSETHER
+         for Ethernet).";
+    }
+    leaf local {
+      type nlt:ip-address;
+      nlx:attr 3;
+      description
+        "The local address.";
+    }
+    leaf remote {
+      type nlt:ip-address;
+      nlx:attr 4;
+      description
+        "The remote address, unicast or multicast.";
+    }
+    leaf local-port {
+      type uint16;
+      nlx:attr 5;
+      description
+        "The UDP port listened on.";
+    }
+    leaf port {
+      type uint16;
+      nlx:attr 6;
+      description
+        "The remote UDP port.";
+    }
+    container port-range {
+      nlx:attr 7;
+      description
+        "The UDP source ports.";
+      uses ifla-geneve-port-range;
+    }
+    leaf df {
+      type geneve-df;
+      nlx:attr 8;
+      description
+        "The don't-fragment policy.";
+    }
+    leaf ttl {
+      type uint8;
+      nlx:attr 9;
+      description
+        "The outer TTL.";
+    }
+    leaf ttl-inherit {
+      type boolean;
+      nlx:attr 10;
+      description
+        "Copy the inner TTL to the outer header.";
+    }
+    leaf dscp-inherit {
+      type boolean;
+      nlx:attr 11;
+      description
+        "Copy the inner DSCP to the outer header.";
+    }
+    leaf collect-metadata {
+      type boolean;
+      nlx:attr 12;
+      description
+        "Externally controlled: the forwarding table is not used.";
+    }
+    leaf ftable-learn {
+      type boolean;
+      nlx:attr 13;
+      description
+        "Learn the forwarding table from received packets.";
+    }
+    leaf ftable-flush {
+      type boolean;
+      nlx:attr 14;
+      description
+        "Read only: flush the forwarding table.";
+    }
+    leaf ftable-max {
+      type uint32;
+      nlx:attr 15;
+      description
+        "The forwarding table's maximum size.";
+    }
+    leaf ftable-timeout {
+      type uint32;
+      nlx:attr 16;
+      description
+        "The forwarding table's entry timeout, in seconds.";
+    }
+    leaf ftable-count {
+      type uint32;
+      nlx:attr 17;
+      description
+        "Sent only: the entries in the forwarding table.";
+    }
+    leaf ftable-nospace-cnt {
+      type uint32;
+      nlx:attr 18;
+      description
+        "Sent only: entries not learnt for want of space.";
+    }
+    leaf ftable-lock-up-fail-cnt {
+      type uint32;
+      nlx:attr 19;
+      description
+        "Sent only: entries not learnt for a lock not taken.";
+    }
+    leaf mc-ifname {
+      type nlt:ifname;
+      nlx:attr 20;
+      description
+        "The interface multicast is sent and received on.";
+    }
+    leaf mc-ifindex {
+      type nlt:ifindex;
+      nlx:attr 21;
+      description
+        "Sent only: the index of mc-ifname.";
+    }
+    leaf txcsum-cnt {
+      type uint64;
+      nlx:attr 22;
+      description
+        "Sent only: packets whose checksum the hardware computed.";
+    }
+    leaf tso-cnt {
+      type uint64;
+      nlx:attr 23;
+      description
+        "Sent only: packets the hardware segmented.";
+    }
+    leaf rxcsum-cnt {
+      type uint64;
+      nlx:attr 24;
+      description
+        "Sent only: packets whose checksum the hardware verified.";
+    }
+  }
+
+  grouping linkinfo-attrs {
+    nlx:name-prefix "IFLA_INFO_";
+    description
+      "IFLA_LINKINFO: the cloner of an interface and its own data.";
+    leaf kind {
+      type string;
+      nlx:attr 1;
+      description
+        "The cloner's name (if_dname): 'vlan', 'gif', 'gre',
+         'geneve', 'epair', 'bridge', 'lo' ...  Read when creating,
+         sent for every cloned interface.";
+    }
+    choice data {
+      nlx:attr 2;
+      nlx:selector kind;
+      description
+        "IFLA_INFO_DATA: the cloner's own attributes, a nest whose
+         format kind selects.  Read when creating or modifying, sent
+         by the cloners that have any.";
+      case vlan {
+        nlx:selector-value "vlan";
+        container vlan {
+          description
+            "A vlan(4) interface.";
+          uses vlan-attrs;
+        }
+      }
+      case gif {
+        nlx:selector-value "gif";
+        container gif {
+          description
+            "A gif(4) interface.";
+          uses iptun-attrs;
+        }
+      }
+      case gre {
+        nlx:selector-value "gre";
+        container gre {
+          description
+            "A gre(4) interface.";
+          uses gre-attrs;
+        }
+      }
+      case geneve {
+        nlx:selector-value "geneve";
+        container geneve {
+          description
+            "A geneve(4) interface.";
+          uses geneve-attrs;
+        }
+      }
+    }
+    leaf xstats {
+      type binary;
+      nlx:attr 3;
+      description
+        "Not supported.";
+    }
+    leaf slave-kind {
+      type string;
+      nlx:attr 4;
+      description
+        "Not supported.";
+    }
+    leaf slave-data {
+      type binary;
+      nlx:attr 5;
+      description
+        "Not supported.";
+    }
+  }
+
+  grouping ifgroup-attrs {
+    nlx:name-prefix "IFLAF_";
+    description
+      "One entry of the IFLAF_GROUP array: a nest of type
+       IFLAF_GROUP holding one string of type IFLAF_GROUP.";
+    leaf group {
+      type string {
+        length "1..15";
+      }
+      nlx:attr 4;
+      description
+        "The group's name.";
+    }
+  }
+
+  grouping vf-status-attrs {
+    nlx:name-prefix "IFLAF_VFS_";
+    description
+      "IFLAF_VF_STATUS: the physical function's side of SR-IOV, sent
+       with RTEXT_FILTER_VF when the driver supports the query.";
+    leaf error {
+      type uint32;
+      nlx:attr 1;
+      description
+        "The errno the query failed with; the other attributes are
+         absent then.";
+    }
+    leaf pf-link-state {
+      type vf-link-state;
+      nlx:attr 2;
+      description
+        "The physical function's link state.";
+    }
+    leaf pf-link-speed {
+      type uint64;
+      nlx:attr 3;
+      units "bit/second";
+      description
+        "The physical function's link speed, when known.";
+    }
+  }
+
+  grouping vf-driver-field-attrs {
+    nlx:name-prefix "IFLAF_VFDF_";
+    description
+      "IFLAF_VFD_FIELD: one field of a driver's namespace, with
+       exactly one of the value attributes.";
+    leaf name {
+      type string;
+      nlx:attr 1;
+      description
+        "The field's name within the namespace.";
+    }
+    choice value {
+      description
+        "The value, of the type the driver gave it.";
+      leaf bool {
+        type boolean;
+        nlx:attr 2;
+        description
+          "A boolean.";
+      }
+      leaf number {
+        type uint64;
+        nlx:attr 3;
+        description
+          "A number.";
+      }
+      leaf string {
+        type string;
+        nlx:attr 4;
+        description
+          "A string.";
+      }
+      leaf binary {
+        type binary;
+        nlx:attr 5;
+        description
+          "Bytes.";
+      }
+    }
+  }
+
+  grouping vf-driver-attrs {
+    nlx:name-prefix "IFLAF_VFD_";
+    description
+      "IFLAF_VF_DRIVER: the driver's own state of a virtual
+       function, as a versioned namespace of named fields.";
+    leaf name {
+      type string;
+      nlx:attr 1;
+      description
+        "The namespace's stable name.";
+    }
+    leaf version {
+      type uint32;
+      nlx:attr 2;
+      description
+        "The namespace's version.";
+    }
+    list field {
+      nlx:attr 3;
+      description
+        "The fields, one attribute each.";
+      uses vf-driver-field-attrs;
+    }
+  }
+
+  grouping vf-attrs {
+    nlx:name-prefix "IFLAF_VF_";
+    description
+      "IFLA_FREEBSD_VF: one SR-IOV virtual function, as iovctl(8)
+       and the driver see it; what the driver did not report is
+       absent.";
+    leaf index {
+      type uint32;
+      nlx:attr 1;
+      description
+        "The virtual function's number; always present.";
+    }
+    leaf configured {
+      type boolean;
+      nlx:attr 2;
+      description
+        "Whether it is configured.";
+    }
+    leaf initialized {
+      type boolean;
+      nlx:attr 3;
+      description
+        "Whether it is initialized.";
+    }
+    leaf mac {
+      type nlt:link-address;
+      nlx:attr 4;
+      description
+        "Its Ethernet address.";
+    }
+    leaf vlan-mode {
+      type vf-vlan-mode;
+      nlx:attr 5;
+      description
+        "How it handles VLAN tags.";
+    }
+    leaf vlan {
+      type uint16;
+      nlx:attr 6;
+      description
+        "Its VLAN tag, in access mode.";
+    }
+    leaf vlan-pcp {
+      type uint8;
+      nlx:attr 7;
+      description
+        "The IEEE 802.1p priority of its tag.";
+    }
+    leaf vlan-proto {
+      type uint16;
+      nlx:attr 8;
+      description
+        "The EtherType of its tag, in host byte order.";
+    }
+    leaf vlan-count {
+      type uint32;
+      nlx:attr 9;
+      description
+        "The VLANs it trunks.";
+    }
+    leaf vlan-limit {
+      type uint32;
+      nlx:attr 10;
+      description
+        "The most VLANs it may trunk.";
+    }
+    leaf num-tx-queues {
+      type uint16;
+      nlx:attr 11;
+      description
+        "Its transmit queues.";
+    }
+    leaf num-rx-queues {
+      type uint16;
+      nlx:attr 12;
+      description
+        "Its receive queues.";
+    }
+    leaf min-tx-rate {
+      type uint64;
+      nlx:attr 13;
+      units "bit/second";
+      description
+        "Its guaranteed transmit rate; 0 is none.";
+    }
+    leaf max-tx-rate {
+      type uint64;
+      nlx:attr 14;
+      units "bit/second";
+      description
+        "Its transmit rate limit; 0 is none.";
+    }
+    leaf allow-set-mac {
+      type boolean;
+      nlx:attr 15;
+      description
+        "Whether it may change its Ethernet address.";
+    }
+    leaf allow-set-vlan {
+      type boolean;
+      nlx:attr 16;
+      description
+        "Whether it may change its VLAN.";
+    }
+    leaf mac-anti-spoof {
+      type boolean;
+      nlx:attr 17;
+      description
+        "Whether frames from another source address are dropped.";
+    }
+    leaf allow-promisc {
+      type boolean;
+      nlx:attr 18;
+      description
+        "Whether it may go promiscuous.";
+    }
+    leaf traffic-allowed {
+      type boolean;
+      nlx:attr 19;
+      description
+        "Whether it passes traffic.";
+    }
+    leaf fault-blocked {
+      type boolean;
+      nlx:attr 20;
+      description
+        "Whether a fault blocks it.";
+    }
+    leaf quarantined {
+      type boolean;
+      nlx:attr 21;
+      description
+        "Whether it is quarantined.";
+    }
+    leaf api-version {
+      type string;
+      nlx:attr 22;
+      description
+        "The version of the API it negotiated with the physical
+         function's driver.";
+    }
+    leaf link-state-policy {
+      type vf-link-state;
+      nlx:attr 23;
+      description
+        "The link state it is given.";
+    }
+    list driver {
+      nlx:attr 24;
+      description
+        "The driver's own fields, one namespace per attribute.";
+      uses vf-driver-attrs;
+    }
+  }
+
+  grouping link-freebsd-attrs {
+    nlx:name-prefix "IFLAF_";
+    description
+      "IFLA_FREEBSD: what FreeBSD has that Linux does not.";
+    leaf orig-ifname {
+      type nlt:ifname;
+      nlx:attr 1;
+      description
+        "The interface's name at creation; defined, not sent.";
+    }
+    leaf orig-hwaddr {
+      type nlt:link-address;
+      nlx:attr 2;
+      description
+        "The hardware's own link-level address (SIOCGHWADDR), which
+         ifconfig(8) ether may have overridden.  Sent when the
+         driver has one.";
+    }
+    container caps {
+      nlx:attr 3;
+      description
+        "The capabilities, as a bitset of capability bits: the mask
+         what the driver offers, the value what is enabled.  Always
+         sent.";
+      uses nl:bitset;
+    }
+    list groups {
+      nlx:attr 4;
+      nlx:c-name IFLAF_GROUP;
+      nlx:array;
+      description
+        "The groups the interface is in (ifconfig(8) group), 'all'
+         included: an IFLAF_GROUP nest of IFLAF_GROUP nests.  Always
+         sent.";
+      uses ifgroup-attrs;
+    }
+    container vf-status {
+      nlx:attr 5;
+      description
+        "The physical function's SR-IOV status; sent when the
+         request had RTEXT_FILTER_VF and the driver answers the
+         query.";
+      uses vf-status-attrs;
+    }
+  }
+
+  grouping link-attrs {
+    nlx:name-prefix "IFLA_";
+    description
+      "The attributes of an interface message.";
+    leaf address {
+      type nlt:link-address;
+      nlx:attr 1;
+      description
+        "The link-level address.  Sent for an interface that has
+         one; read when creating or modifying (ifconfig(8) ether,
+         with PRIV_NET_SETIFMAC).";
+    }
+    leaf broadcast {
+      type nlt:link-address;
+      nlx:attr 2;
+      description
+        "The link-level broadcast address.  Sent for an interface
+         that has one.";
+    }
+    leaf ifname {
+      type nlt:ifname;
+      nlx:attr 3;
+      description
+        "The interface's name.  Always sent; in a request, the
+         interface when ifi-index is 0, and the name to create.";
+    }
+    leaf mtu {
+      type uint32;
+      nlx:attr 4;
+      description
+        "The MTU.  Always sent; read when creating or modifying.";
+    }
+    leaf link {
+      type nlt:ifindex;
+      nlx:attr 5;
+      description
+        "The index of the interface this one is on: a vlan(4)'s
+         parent; a gif(4), gre(4) or geneve(4) sends its own index.
+         Read when creating a vlan(4).";
+    }
+    leaf qdisc {
+      type string;
+      nlx:attr 6;
+      description
+        "Not supported.";
+    }
+    container stats {
+      nlx:attr 7;
+      description
+        "Not sent; stats64 is.";
+      uses rtnl-link-stats;
+    }
+    leaf cost {
+      type binary;
+      nlx:attr 8;
+      description
+        "Not supported.";
+    }
+    leaf priority {
+      type binary;
+      nlx:attr 9;
+      description
+        "Not supported.";
+    }
+    leaf master {
+      type nlt:ifindex;
+      nlx:attr 10;
+      description
+        "The parent's index; defined, not sent.";
+    }
+    leaf wireless {
+      type binary;
+      nlx:attr 11;
+      description
+        "Not supported.";
+    }
+    leaf protinfo {
+      type binary;
+      nlx:attr 12;
+      description
+        "Not supported.";
+    }
+    leaf txqlen {
+      type uint32;
+      nlx:attr 13;
+      description
+        "Not supported.";
+    }
+    leaf map {
+      type binary;
+      nlx:attr 14;
+      description
+        "Not supported.";
+    }
+    leaf weight {
+      type uint32;
+      nlx:attr 15;
+      description
+        "Not supported.";
+    }
+    leaf operstate {
+      type operational-state;
+      nlx:attr 16;
+      description
+        "The operational state.  Always sent.";
+    }
+    leaf linkmode {
+      type uint8;
+      nlx:attr 17;
+      description
+        "Not supported.";
+    }
+    container linkinfo {
+      nlx:attr 18;
+      description
+        "The cloner and its data.  Sent for a cloned interface;
+         read when creating (kind) and modifying (data).";
+      uses linkinfo-attrs;
+    }
+    leaf net-ns-pid {
+      type uint32;
+      nlx:attr 19;
+      description
+        "Not supported; interfaces move between vnets with
+         ifconfig(8) vnet.";
+    }
+    leaf ifalias {
+      type string;
+      nlx:attr 20;
+      description
+        "The description (ifconfig(8) description).  Sent when set;
+         read when creating or modifying.";
+    }
+    leaf num-vf {
+      type uint32;
+      nlx:attr 21;
+      description
+        "The SR-IOV virtual functions; sent when the request had
+         RTEXT_FILTER_VF and the driver answered.";
+    }
+    leaf vfinfo-list {
+      type binary;
+      nlx:attr 22;
+      description
+        "Not supported; the virtual functions are vf.";
+    }
+    container stats64 {
+      nlx:attr 23;
+      description
+        "The counters.  Always sent.";
+      uses rtnl-link-stats64;
+    }
+    leaf vf-ports {
+      type binary;
+      nlx:attr 24;
+      description
+        "Not supported.";
+    }
+    leaf port-self {
+      type binary;
+      nlx:attr 25;
+      description
+        "Not supported.";
+    }
+    leaf af-spec {
+      type binary;
+      nlx:attr 26;
+      description
+        "Not supported.";
+    }
+    leaf group {
+      type string;
+      nlx:attr 27;
+      description
+        "In a request, an interface group's name: RTM_GETLINK
+         dumps the interfaces in it.  Not sent.";
+    }
+    leaf net-ns-fd {
+      type uint32;
+      nlx:attr 28;
+      description
+        "Not supported.";
+    }
+    leaf ext-mask {
+      type external-filter-mask;
+      nlx:attr 29;
+      description
+        "In a RTM_GETLINK request, what to report beyond the
+         basics.";
+    }
+    leaf promiscuity {
+      type uint32;
+      nlx:attr 30;
+      description
+        "1 when the interface is promiscuous, 0 otherwise.  Always
+         sent.";
+    }
+    leaf num-tx-queues {
+      type uint32;
+      nlx:attr 31;
+      description
+        "Not supported.";
+    }
+    leaf num-rx-queues {
+      type uint32;
+      nlx:attr 32;
+      description
+        "Not supported.";
+    }
+    leaf carrier {
+      type uint8;
+      nlx:attr 33;
+      description
+        "1 when the link is up, 0 otherwise.  Always sent.";
+    }
+    leaf phys-port-id {
+      type binary;
+      nlx:attr 34;
+      description
+        "Not supported.";
+    }
+    leaf carrier-changes {
+      type uint32;
+      nlx:attr 35;
+      description
+        "Not supported.";
+    }
+    leaf phys-switch-id {
+      type binary;
+      nlx:attr 36;
+      description
+        "Not supported.";
+    }
+    leaf link-netnsid {
+      type int32;
+      nlx:attr 37;
+      description
+        "Not supported.";
+    }
+    leaf phys-port-name {
+      type string;
+      nlx:attr 38;
+      description
+        "Not supported.";
+    }
+    leaf proto-down {
+      type uint8;
+      nlx:attr 39;
+      description
+        "Not supported.";
+    }
+    leaf gso-max-segs {
+      type uint32;
+      nlx:attr 40;
+      description
+        "Not supported.";
+    }
+    leaf gso-max-size {
+      type uint32;
+      nlx:attr 41;
+      description
+        "Not supported.";
+    }
+    leaf pad {
+      type binary;
+      nlx:attr 42;
+      description
+        "Padding; not used.";
+    }
+    leaf xdp {
+      type binary;
+      nlx:attr 43;
+      description
+        "Not supported.";
+    }
+    leaf event {
+      type uint32;
+      nlx:attr 44;
+      description
+        "Not supported.";
+    }
+    leaf new-netnsid {
+      type int32;
+      nlx:attr 45;
+      description
+        "Not supported.";
+    }
+    leaf target-netnsid {
+      type int32;
+      nlx:attr 46;
+      description
+        "Not supported (IFLA_IF_NETNSID).";
+    }
+    leaf carrier-up-count {
+      type uint32;
+      nlx:attr 47;
+      description
+        "Not supported.";
+    }
+    leaf carrier-down-count {
+      type uint32;
+      nlx:attr 48;
+      description
+        "Not supported.";
+    }
+    leaf new-ifindex {
+      type int32;
+      nlx:attr 49;
+      description
+        "Not supported.";
+    }
+    leaf min-mtu {
+      type uint32;
+      nlx:attr 50;
+      description
+        "Not sent.";
+    }
+    leaf max-mtu {
+      type uint32;
+      nlx:attr 51;
+      description
+        "Not sent.";
+    }
+    leaf prop-list {
+      type binary;
+      nlx:attr 52;
+      description
+        "Not supported.";
+    }
+    leaf alt-ifname {
+      type nlt:ifname;
+      nlx:attr 53;
+      description
+        "In a request, the same as ifname.";
+    }
+    leaf perm-address {
+      type nlt:link-address;
+      nlx:attr 54;
+      description
+        "Not supported; freebsd/orig-hwaddr is the hardware's.";
+    }
+    leaf proto-down-reason {
+      type string;
+      nlx:attr 55;
+      description
+        "Not supported.";
+    }
+    leaf parent-dev-name {
+      type string;
+      nlx:attr 56;
+      description
+        "Not supported.";
+    }
+    leaf parent-dev-bus-name {
+      type string;
+      nlx:attr 57;
+      description
+        "Not supported.";
+    }
+    leaf gro-max-size {
+      type uint32;
+      nlx:attr 58;
+      description
+        "Not supported.";
+    }
+    leaf tso-max-segs {
+      type uint32;
+      nlx:attr 59;
+      description
+        "Not supported.";
+    }
+    leaf allmulti {
+      type uint32;
+      nlx:attr 60;
+      description
+        "Not supported.";
+    }
+    leaf devlink-port {
+      type binary;
+      nlx:attr 61;
+      description
+        "Not supported.";
+    }
+    leaf gso-ipv4-max-size {
+      type uint32;
+      nlx:attr 62;
+      description
+        "Not supported.";
+    }
+    leaf gro-ipv4-max-size {
+      type uint32;
+      nlx:attr 63;
+      description
+        "Not supported.";
+    }
+    container freebsd {
+      nlx:attr 64;
+      description
+        "FreeBSD's own.  Always sent.";
+      uses link-freebsd-attrs;
+    }
+    list vf {
+      nlx:attr 65;
+      nlx:c-name IFLA_FREEBSD_VF;
+      description
+        "The SR-IOV virtual functions, one attribute each; sent
+         when the request had RTEXT_FILTER_VF and the driver
+         answered.";
+      uses vf-attrs;
+    }
+  }
+
+  grouping link-message {
+    nlx:fixed-header ifinfomsg;
+    description
+      "An interface message: the fixed header, then the attributes.";
+    uses ifinfomsg;
+    uses link-attrs;
+  }
+
+  rpc getlink {
+    nlx:msg-type RTM_GETLINK;
+    nlx:do;
+    nlx:dump;
+    description
+      "List the interfaces of the socket's vnet, or get one.  With
+       NLM_F_DUMP, every interface, or those in the group named by
+       group; without, the one named by ifi-index or ifname.  A
+       non-vnet jail may ask.";
+    input {
+      uses link-message;
+    }
+    output {
+      list link {
+        description
+          "One RTM_NEWLINK message per interface.";
+        uses link-message;
+      }
+    }
+  }
+
+  rpc newlink {
+    nlx:msg-type RTM_NEWLINK;
+    nlx:do;
+    description
+      "With NLM_F_CREATE, create a cloned interface named ifname of
+       the cloner linkinfo/kind, with its data (PRIV_NET_IFCREATE);
+       the acknowledgement's cookie carries the name it got.
+       Without, modify the interface named by ifi-index or ifname:
+       mtu, ifalias, address, and the cloner's data.";
+    input {
+      uses link-message;
+    }
+  }
+
+  rpc dellink {
+    nlx:msg-type RTM_DELLINK;
+    nlx:do;
+    description
+      "Destroy the cloned interface named by ifi-index or ifname
+       (PRIV_NET_IFDESTROY).";
+    input {
+      uses link-message;
+    }
+  }
+
+  notification link-new {
+    nlx:msg-type RTM_NEWLINK;
+    nlx:group RTNLGRP_LINK;
+    description
+      "An interface appeared, was renamed, or changed flags
+       (ifi-change says which); the whole interface as getlink
+       reports it.";
+    uses link-message;
+  }
+
+  notification link-del {
+    nlx:msg-type RTM_DELLINK;
+    nlx:group RTNLGRP_LINK;
+    description
+      "An interface went away.";
+    uses link-message;
+  }
+}

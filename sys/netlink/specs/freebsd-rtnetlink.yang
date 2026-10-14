@@ -1,0 +1,615 @@
+// SPDX-License-Identifier: BSD-2-Clause
+//
+// Copyright (c) 2026 Pouria Mousavizadeh Tehrani <pouria@FreeBSD.org>
+
+module freebsd-rtnetlink {
+  yang-version 1.1;
+  namespace "urn:freebsd:yang:freebsd-rtnetlink";
+  prefix rtnl;
+
+  import freebsd-netlink-extensions {
+    prefix nlx;
+  }
+  import freebsd-netlink-types {
+    prefix nlt;
+  }
+
+  organization
+    "FreeBSD";
+  contact
+    "Pouria Mousavizadeh Tehrani <pouria@FreeBSD.org>";
+  description
+    "FreeBSD's NETLINK_ROUTE protocol as <netlink/route/common.h>
+     defines it: the message types and the multicast groups.  The
+     messages themselves are in freebsd-rtnetlink-link,
+     freebsd-rtnetlink-addr, freebsd-rtnetlink-route,
+     freebsd-rtnetlink-neigh and freebsd-rtnetlink-nexthop, one
+     module per header of <netlink/route/>.
+
+     The kernel uses the names with an NL_ prefix (NL_RTM_NEWLINK),
+     because the RTM_ ones clash with the routing socket's; userland
+     sees both.";
+  reference
+    "netlink(4), route(4)";
+
+  revision 2026-10-14 {
+    description
+      "Initial revision, for FreeBSD 16.0-CURRENT (main at
+       84f790e5b6cc).";
+  }
+
+  nlx:protocol NETLINK_ROUTE;
+  nlx:uapi-header "netlink/route/common.h";
+
+  typedef message-type {
+    type enumeration {
+      enum newlink {
+        value 16;
+        description
+          "RTM_NEWLINK: create or modify an interface; the kernel's
+           notice of one appearing or changing.";
+      }
+      enum dellink {
+        value 17;
+        description
+          "RTM_DELLINK: destroy an interface; the kernel's notice of
+           one going.";
+      }
+      enum getlink {
+        value 18;
+        description
+          "RTM_GETLINK: list the interfaces, or one.";
+      }
+      enum setlink {
+        value 19;
+        description
+          "RTM_SETLINK: not supported; RTM_NEWLINK without
+           NLM_F_CREATE modifies.";
+      }
+      enum newaddr {
+        value 20;
+        description
+          "RTM_NEWADDR: add an address to an interface; the kernel's
+           notice of one added.";
+      }
+      enum deladdr {
+        value 21;
+        description
+          "RTM_DELADDR: delete an address; the kernel's notice of
+           one deleted.";
+      }
+      enum getaddr {
+        value 22;
+        description
+          "RTM_GETADDR: list the addresses.";
+      }
+      enum newroute {
+        value 24;
+        description
+          "RTM_NEWROUTE: add or change a route; the kernel's notice
+           of one added or changed.";
+      }
+      enum delroute {
+        value 25;
+        description
+          "RTM_DELROUTE: delete a route; the kernel's notice of one
+           deleted.";
+      }
+      enum getroute {
+        value 26;
+        description
+          "RTM_GETROUTE: list the routes, or look one up.";
+      }
+      enum newneigh {
+        value 28;
+        description
+          "RTM_NEWNEIGH: create an ARP or NDP entry; the kernel's
+           notice of one.";
+      }
+      enum delneigh {
+        value 29;
+        description
+          "RTM_DELNEIGH: delete an ARP or NDP entry; the kernel's
+           notice of one deleted.";
+      }
+      enum getneigh {
+        value 30;
+        description
+          "RTM_GETNEIGH: list the ARP and NDP entries.";
+      }
+      enum newrule {
+        value 32;
+        description
+          "Not supported.";
+      }
+      enum delrule {
+        value 33;
+        description
+          "Not supported.";
+      }
+      enum getrule {
+        value 34;
+        description
+          "Not supported.";
+      }
+      enum newqdisc {
+        value 36;
+        description
+          "Not supported.";
+      }
+      enum delqdisc {
+        value 37;
+        description
+          "Not supported.";
+      }
+      enum getqdisc {
+        value 38;
+        description
+          "Not supported.";
+      }
+      enum newtclass {
+        value 40;
+        description
+          "Not supported.";
+      }
+      enum deltclass {
+        value 41;
+        description
+          "Not supported.";
+      }
+      enum gettclass {
+        value 42;
+        description
+          "Not supported.";
+      }
+      enum newtfilter {
+        value 44;
+        description
+          "Not supported.";
+      }
+      enum deltfilter {
+        value 45;
+        description
+          "Not supported.";
+      }
+      enum gettfilter {
+        value 46;
+        description
+          "Not supported.";
+      }
+      enum newaction {
+        value 48;
+        description
+          "Not supported.";
+      }
+      enum delaction {
+        value 49;
+        description
+          "Not supported.";
+      }
+      enum getaction {
+        value 50;
+        description
+          "Not supported.";
+      }
+      enum newprefix {
+        value 52;
+        description
+          "Not supported.";
+      }
+      enum getmulticast {
+        value 58;
+        description
+          "Not supported.";
+      }
+      enum getanycast {
+        value 62;
+        description
+          "Not supported.";
+      }
+      enum newneightbl {
+        value 64;
+        description
+          "Not supported.";
+      }
+      enum getneightbl {
+        value 66;
+        description
+          "Not supported.";
+      }
+      enum setneightbl {
+        value 67;
+        description
+          "Not supported.";
+      }
+      enum newnduseropt {
+        value 68;
+        description
+          "Not supported.";
+      }
+      enum newaddrlabel {
+        value 72;
+        description
+          "Not supported.";
+      }
+      enum deladdrlabel {
+        value 73;
+        description
+          "Not supported.";
+      }
+      enum getaddrlabel {
+        value 74;
+        description
+          "Not supported.";
+      }
+      enum getdcb {
+        value 78;
+        description
+          "Not supported.";
+      }
+      enum setdcb {
+        value 79;
+        description
+          "Not supported.";
+      }
+      enum newnetconf {
+        value 80;
+        description
+          "Not supported.";
+      }
+      enum getnetconf {
+        value 82;
+        description
+          "Not supported.";
+      }
+      enum newmdb {
+        value 84;
+        description
+          "Not supported.";
+      }
+      enum delmdb {
+        value 85;
+        description
+          "Not supported.";
+      }
+      enum getmdb {
+        value 86;
+        description
+          "Not supported.";
+      }
+      enum newnsid {
+        value 88;
+        description
+          "Not supported.";
+      }
+      enum delnsid {
+        value 89;
+        description
+          "Not supported.";
+      }
+      enum getnsid {
+        value 90;
+        description
+          "Not supported.";
+      }
+      enum newstats {
+        value 92;
+        description
+          "Not supported.";
+      }
+      enum getstats {
+        value 94;
+        description
+          "Not supported.";
+      }
+      enum newnexthop {
+        value 104;
+        description
+          "RTM_NEWNEXTHOP: create a user nexthop or nexthop group;
+           the kernel's notice of one.";
+      }
+      enum delnexthop {
+        value 105;
+        description
+          "RTM_DELNEXTHOP: delete a user nexthop; the kernel's
+           notice of one deleted.";
+      }
+      enum getnexthop {
+        value 106;
+        description
+          "RTM_GETNEXTHOP: list the user nexthops, or the kernel's
+           own.";
+      }
+    }
+    nlx:width 16;
+    nlx:name-prefix "RTM_";
+    description
+      "The message types of NETLINK_ROUTE, the nlmsg_type of a
+       request, reply or notification.  Of each triple, NEW is 0
+       modulo 4, DEL 1, GET 2 and SET 3; the numbers are Linux's.";
+  }
+
+  typedef multicast-group {
+    type enumeration {
+      enum none {
+        value 0;
+        description
+          "RTNLGRP_NONE.";
+      }
+      enum link {
+        value 1;
+        description
+          "RTNLGRP_LINK: RTM_NEWLINK when an interface appears, is
+           renamed or changes flags, RTM_DELLINK when one goes.";
+      }
+      enum notify {
+        value 2;
+        description
+          "RTNLGRP_NOTIFY: nothing is sent.";
+      }
+      enum neigh {
+        value 3;
+        description
+          "RTNLGRP_NEIGH: RTM_NEWNEIGH and RTM_DELNEIGH as entries
+           come and go.";
+      }
+      enum tc {
+        value 4;
+        description
+          "Not supported.";
+      }
+      enum ipv4-ifaddr {
+        value 5;
+        description
+          "RTNLGRP_IPV4_IFADDR: RTM_NEWADDR and RTM_DELADDR for IPv4
+           addresses.";
+      }
+      enum ipv4-mroute {
+        value 6;
+        description
+          "Not supported.";
+      }
+      enum ipv4-route {
+        value 7;
+        description
+          "RTNLGRP_IPV4_ROUTE: RTM_NEWROUTE and RTM_DELROUTE for
+           IPv4 routes, in every FIB.";
+      }
+      enum ipv4-rule {
+        value 8;
+        description
+          "Not supported.";
+      }
+      enum ipv6-ifaddr {
+        value 9;
+        description
+          "RTNLGRP_IPV6_IFADDR: RTM_NEWADDR and RTM_DELADDR for IPv6
+           addresses.";
+      }
+      enum ipv6-mroute {
+        value 10;
+        description
+          "Not supported.";
+      }
+      enum ipv6-route {
+        value 11;
+        description
+          "RTNLGRP_IPV6_ROUTE: RTM_NEWROUTE and RTM_DELROUTE for
+           IPv6 routes, in every FIB.";
+      }
+      enum ipv6-ifinfo {
+        value 12;
+        description
+          "Not supported.";
+      }
+      enum decnet-ifaddr {
+        value 13;
+        description
+          "Not supported.";
+      }
+      enum nop2 {
+        value 14;
+        description
+          "Unused.";
+      }
+      enum decnet-route {
+        value 15;
+        description
+          "Not supported.";
+      }
+      enum decnet-rule {
+        value 16;
+        description
+          "Not supported.";
+      }
+      enum nop4 {
+        value 17;
+        description
+          "Unused.";
+      }
+      enum ipv6-prefix {
+        value 18;
+        description
+          "Not supported.";
+      }
+      enum ipv6-rule {
+        value 19;
+        description
+          "Not supported.";
+      }
+      enum nd-useropt {
+        value 20;
+        description
+          "Not supported.";
+      }
+      enum phonet-ifaddr {
+        value 21;
+        description
+          "Not supported.";
+      }
+      enum phonet-route {
+        value 22;
+        description
+          "Not supported.";
+      }
+      enum dcb {
+        value 23;
+        description
+          "Not supported.";
+      }
+      enum ipv4-netconf {
+        value 24;
+        description
+          "Not supported.";
+      }
+      enum ipv6-netconf {
+        value 25;
+        description
+          "Not supported.";
+      }
+      enum mdb {
+        value 26;
+        description
+          "Not supported.";
+      }
+      enum mpls-route {
+        value 27;
+        description
+          "Not supported.";
+      }
+      enum nsid {
+        value 28;
+        description
+          "Not supported.";
+      }
+      enum mpls-netconf {
+        value 29;
+        description
+          "Not supported.";
+      }
+      enum ipv4-mroute-r {
+        value 30;
+        description
+          "Not supported.";
+      }
+      enum ipv6-mroute-r {
+        value 31;
+        description
+          "Not supported.";
+      }
+      enum nexthop {
+        value 32;
+        description
+          "RTNLGRP_NEXTHOP: RTM_NEWNEXTHOP and RTM_DELNEXTHOP for
+           user nexthops.";
+      }
+      enum brvlan {
+        value 33;
+        description
+          "Not supported.";
+      }
+    }
+    nlx:name-prefix "RTNLGRP_";
+    description
+      "The multicast groups of NETLINK_ROUTE, joined with
+       NETLINK_ADD_MEMBERSHIP; the first 31 also through the
+       nl_groups mask of bind(2), see legacy-group-mask.";
+  }
+
+  typedef legacy-group-mask {
+    type bits {
+      bit link {
+        position 0;
+        description
+          "RTMGRP_LINK.";
+      }
+      bit notify {
+        position 1;
+        description
+          "RTMGRP_NOTIFY.";
+      }
+      bit neigh {
+        position 2;
+        description
+          "RTMGRP_NEIGH.";
+      }
+      bit tc {
+        position 3;
+        description
+          "RTMGRP_TC.";
+      }
+      bit ipv4-ifaddr {
+        position 4;
+        description
+          "RTMGRP_IPV4_IFADDR.";
+      }
+      bit ipv4-mroute {
+        position 5;
+        description
+          "RTMGRP_IPV4_MROUTE.";
+      }
+      bit ipv4-route {
+        position 6;
+        description
+          "RTMGRP_IPV4_ROUTE.";
+      }
+      bit ipv4-rule {
+        position 7;
+        description
+          "RTMGRP_IPV4_RULE.";
+      }
+      bit ipv6-ifaddr {
+        position 8;
+        description
+          "RTMGRP_IPV6_IFADDR.";
+      }
+      bit ipv6-mroute {
+        position 9;
+        description
+          "RTMGRP_IPV6_MROUTE.";
+      }
+      bit ipv6-route {
+        position 10;
+        description
+          "RTMGRP_IPV6_ROUTE.";
+      }
+      bit ipv6-ifinfo {
+        position 11;
+        description
+          "RTMGRP_IPV6_IFINFO.";
+      }
+      bit decnet-ifaddr {
+        position 12;
+        description
+          "RTMGRP_DECnet_IFADDR.";
+      }
+      bit decnet-route {
+        position 14;
+        description
+          "RTMGRP_DECnet_ROUTE.";
+      }
+      bit ipv6-prefix {
+        position 17;
+        description
+          "RTMGRP_IPV6_PREFIX.";
+      }
+    }
+    nlx:name-prefix "RTMGRP_";
+    description
+      "The multicast groups as the nl_groups mask of bind(2) names
+       them: bit n - 1 for group n (RTMGRP_*, userland only).";
+  }
+
+  grouping rtgenmsg {
+    nlx:struct rtgenmsg;
+    description
+      "The one byte header Linux puts in front of a dump request
+       (struct rtgenmsg); FreeBSD's dumps take the message's own
+       fixed header.";
+    leaf rtgen-family {
+      type nlt:address-family;
+      description
+        "The address family to dump.";
+    }
+  }
+}

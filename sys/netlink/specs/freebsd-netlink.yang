@@ -1,0 +1,636 @@
+// SPDX-License-Identifier: BSD-2-Clause
+//
+// Copyright (c) 2026 Pouria Mousavizadeh Tehrani <pouria@FreeBSD.org>
+
+module freebsd-netlink {
+  yang-version 1.1;
+  namespace "urn:freebsd:yang:freebsd-netlink";
+  prefix nl;
+
+  import freebsd-netlink-extensions {
+    prefix nlx;
+  }
+
+  organization
+    "FreeBSD";
+  contact
+    "Pouria Mousavizadeh Tehrani <pouria@FreeBSD.org>";
+  description
+    "FreeBSD's netlink(4) as <netlink/netlink.h> defines it: the
+     socket address, the socket options, the message header and its
+     flags, the attribute header, the control messages (the error
+     acknowledgement and the end of a dump), the message information
+     a socket can ask for in control messages, and the compact
+     bitset attribute of <netlink/netlink_bitset.h>.
+
+     The protocols are in their own modules: freebsd-rtnetlink and
+     its parts for NETLINK_ROUTE, freebsd-genetlink and one module
+     per family for NETLINK_GENERIC.";
+  reference
+    "netlink(4), RFC 3549: Linux Netlink as an IP Services Protocol";
+
+  revision 2026-10-14 {
+    description
+      "Initial revision, for FreeBSD 16.0-CURRENT (main at
+       84f790e5b6cc).";
+  }
+
+  nlx:uapi-header "netlink/netlink.h";
+
+  typedef protocol {
+    type enumeration {
+      enum route {
+        value 0;
+        description
+          "NETLINK_ROUTE: interfaces, addresses, routes, neighbours
+           and nexthops; freebsd-rtnetlink.";
+      }
+      enum unused {
+        value 1;
+        description
+          "NETLINK_UNUSED: not supported.";
+      }
+      enum usersock {
+        value 2;
+        description
+          "Not supported.";
+      }
+      enum firewall {
+        value 3;
+        description
+          "Not supported.";
+      }
+      enum sock-diag {
+        value 4;
+        description
+          "Not supported.";
+      }
+      enum nflog {
+        value 5;
+        description
+          "Not supported.";
+      }
+      enum xfrm {
+        value 6;
+        description
+          "Not supported; PF_KEY is the key management socket.";
+      }
+      enum selinux {
+        value 7;
+        description
+          "Not supported.";
+      }
+      enum iscsi {
+        value 8;
+        description
+          "Not supported.";
+      }
+      enum audit {
+        value 9;
+        description
+          "Not supported.";
+      }
+      enum fib-lookup {
+        value 10;
+        description
+          "Not supported.";
+      }
+      enum connector {
+        value 11;
+        description
+          "Not supported.";
+      }
+      enum netfilter {
+        value 12;
+        description
+          "Not supported.";
+      }
+      enum ip6-fw {
+        value 13;
+        description
+          "Not supported.";
+      }
+      enum dnrtmsg {
+        value 14;
+        description
+          "Not supported.";
+      }
+      enum kobject-uevent {
+        value 15;
+        description
+          "Not supported.";
+      }
+      enum generic {
+        value 16;
+        description
+          "NETLINK_GENERIC: the families registered at run time;
+           freebsd-genetlink.";
+      }
+    }
+    nlx:name-prefix "NETLINK_";
+    description
+      "A netlink protocol, the third argument of socket(2) with
+       PF_NETLINK and SOCK_RAW.  FreeBSD implements NETLINK_ROUTE and
+       NETLINK_GENERIC; the other numbers are Linux's, kept so that
+       a program sees the same numbers on both.";
+  }
+
+  typedef socket-option {
+    type enumeration {
+      enum add-membership {
+        value 1;
+        description
+          "NETLINK_ADD_MEMBERSHIP: subscribe the socket to a
+           multicast group, by number.";
+      }
+      enum drop-membership {
+        value 2;
+        description
+          "NETLINK_DROP_MEMBERSHIP: leave a multicast group.";
+      }
+      enum pktinfo {
+        value 3;
+        description
+          "Not supported.";
+      }
+      enum broadcast-error {
+        value 4;
+        description
+          "Not supported.";
+      }
+      enum no-enobufs {
+        value 5;
+        description
+          "Not supported.";
+      }
+      enum rx-ring {
+        value 6;
+        description
+          "Not supported.";
+      }
+      enum tx-ring {
+        value 7;
+        description
+          "Not supported.";
+      }
+      enum listen-all-nsid {
+        value 8;
+        description
+          "Not supported.";
+      }
+      enum list-memberships {
+        value 9;
+        description
+          "NETLINK_LIST_MEMBERSHIPS: read the groups the socket is
+           in, as a bitmap.";
+      }
+      enum cap-ack {
+        value 10;
+        description
+          "NETLINK_CAP_ACK: an acknowledgement carries only the
+           header of the message it answers, not the whole message
+           (NLM_F_CAPPED).";
+      }
+      enum ext-ack {
+        value 11;
+        description
+          "NETLINK_EXT_ACK: an acknowledgement may carry the
+           attributes of error-message: a text, the offset of the
+           offending attribute, a cookie (NLM_F_ACK_TLVS).";
+      }
+      enum get-strict-chk {
+        value 12;
+        description
+          "NETLINK_GET_STRICT_CHK: reject requests whose fixed
+           header has fields set that the kernel does not use.";
+      }
+      enum msg-info {
+        value 257;
+        description
+          "NETLINK_MSG_INFO, FreeBSD's own: each received message
+           comes with a control message of level SOL_NETLINK and
+           type NETLINK_MSG_INFO holding message-info.";
+      }
+    }
+    nlx:name-prefix "NETLINK_";
+    description
+      "A socket option of level SOL_NETLINK (270).";
+  }
+
+  typedef message-flags {
+    type bits {
+      bit request {
+        position 0;
+        description
+          "NLM_F_REQUEST: a request to the kernel.";
+      }
+      bit multi {
+        position 1;
+        description
+          "NLM_F_MULTI: part of a multipart reply ended by a
+           NLMSG_DONE message.";
+      }
+      bit ack {
+        position 2;
+        description
+          "NLM_F_ACK: answer with an error message even on success
+           (error 0).";
+      }
+      bit echo {
+        position 3;
+        description
+          "NLM_F_ECHO: not supported.";
+      }
+      bit dump-intr {
+        position 4;
+        description
+          "NLM_F_DUMP_INTR: the dump was inconsistent, a change
+           happened while it ran.";
+      }
+      bit dump-filtered {
+        position 5;
+        description
+          "NLM_F_DUMP_FILTERED: the dump was filtered as the request
+           asked.";
+      }
+    }
+    nlx:width 16;
+    nlx:name-prefix "NLM_F_";
+    description
+      "The flags of a message header common to every message type;
+       bits 8 to 11 depend on the request, see get-flags, new-flags,
+       delete-flags and ack-flags.";
+  }
+
+  typedef get-flags {
+    type bits {
+      bit root {
+        position 8;
+        description
+          "NLM_F_ROOT: return the complete table.";
+      }
+      bit match {
+        position 9;
+        description
+          "NLM_F_MATCH: return every entry matching the request.";
+      }
+      bit atomic {
+        position 10;
+        description
+          "NLM_F_ATOMIC: ignored.";
+      }
+    }
+    nlx:width 16;
+    nlx:name-prefix "NLM_F_";
+    description
+      "The flags of a GET request.  NLM_F_DUMP is root and match
+       together: a multipart dump.";
+  }
+
+  typedef new-flags {
+    type bits {
+      bit replace {
+        position 8;
+        description
+          "NLM_F_REPLACE: replace the matching object.";
+      }
+      bit excl {
+        position 9;
+        description
+          "NLM_F_EXCL: fail if the object exists.";
+      }
+      bit create {
+        position 10;
+        description
+          "NLM_F_CREATE: create the object if it does not exist.";
+      }
+      bit append {
+        position 11;
+        description
+          "NLM_F_APPEND: add to the end of a list.";
+      }
+    }
+    nlx:width 16;
+    nlx:name-prefix "NLM_F_";
+    description
+      "The flags of a NEW request.";
+  }
+
+  typedef delete-flags {
+    type bits {
+      bit nonrec {
+        position 8;
+        description
+          "NLM_F_NONREC: do not delete recursively.";
+      }
+    }
+    nlx:width 16;
+    nlx:name-prefix "NLM_F_";
+    description
+      "The flags of a DEL request.";
+  }
+
+  typedef ack-flags {
+    type bits {
+      bit capped {
+        position 8;
+        description
+          "NLM_F_CAPPED: the acknowledgement carries only the header
+           of the request (NETLINK_CAP_ACK).";
+      }
+      bit ack-tlvs {
+        position 9;
+        description
+          "NLM_F_ACK_TLVS: the acknowledgement carries attributes
+           (NETLINK_EXT_ACK).";
+      }
+    }
+    nlx:width 16;
+    nlx:name-prefix "NLM_F_";
+    description
+      "The flags of an error message (acknowledgement).";
+  }
+
+  typedef control-message-type {
+    type enumeration {
+      enum noop {
+        value 1;
+        description
+          "NLMSG_NOOP: ignored.";
+      }
+      enum error {
+        value 2;
+        description
+          "NLMSG_ERROR: an error message, the acknowledgement of a
+           request; error-message follows the header.";
+      }
+      enum done {
+        value 3;
+        description
+          "NLMSG_DONE: the end of a multipart reply; the error of the
+           dump follows the header as in error-message.";
+      }
+      enum overrun {
+        value 4;
+        description
+          "NLMSG_OVERRUN: not sent.";
+      }
+    }
+    nlx:width 16;
+    nlx:name-prefix "NLMSG_";
+    description
+      "The message types below NLMSG_MIN_TYPE (16) every protocol
+       shares.";
+  }
+
+  typedef attribute-type-flags {
+    type bits {
+      bit net-byteorder {
+        position 14;
+        description
+          "NLA_F_NET_BYTEORDER: the payload is in network byte
+           order; not used.";
+      }
+      bit nested {
+        position 15;
+        description
+          "NLA_F_NESTED: the payload is attributes; not used, a
+           parser knows from the type.";
+      }
+    }
+    nlx:width 16;
+    nlx:name-prefix "NLA_F_";
+    description
+      "The two high bits of an attribute's nla_type; the type number
+       is the other fourteen (NLA_TYPE_MASK).";
+  }
+
+  grouping sockaddr-nl {
+    nlx:struct sockaddr_nl;
+    description
+      "The address of a netlink socket (struct sockaddr_nl), for
+       bind(2).";
+    leaf nl-len {
+      type uint8;
+      description
+        "sizeof(struct sockaddr_nl), 12.";
+    }
+    leaf nl-family {
+      type uint8;
+      description
+        "AF_NETLINK.";
+    }
+    leaf nl-pad {
+      type uint16;
+      description
+        "Zero.";
+    }
+    leaf nl-pid {
+      type uint32;
+      description
+        "The port the socket wants, 0 for one the kernel picks.";
+    }
+    leaf nl-groups {
+      type uint32;
+      description
+        "A mask of the first 32 multicast groups to join at bind;
+         NETLINK_ADD_MEMBERSHIP reaches the others.";
+    }
+  }
+
+  grouping nlmsghdr {
+    nlx:struct nlmsghdr;
+    description
+      "The header in front of every message (struct nlmsghdr); the
+       protocol's fixed header, then the attributes, follow it,
+       each 4 byte aligned.";
+    leaf nlmsg-len {
+      type uint32;
+      description
+        "The length of the message, header included.";
+    }
+    leaf nlmsg-type {
+      type uint16;
+      description
+        "The message type: a control-message-type, or the
+         protocol's own: a freebsd-rtnetlink message-type, or the
+         number of a generic netlink family.";
+    }
+    leaf nlmsg-flags {
+      type message-flags;
+      nlx:width 16;
+      description
+        "The flags, with the request-dependent bits of get-flags,
+         new-flags, delete-flags or ack-flags.";
+    }
+    leaf nlmsg-seq {
+      type uint32;
+      description
+        "The sequence number the sender chose; the replies repeat
+         it.";
+    }
+    leaf nlmsg-pid {
+      type uint32;
+      description
+        "The port of the sending socket, 0 for the kernel.";
+    }
+  }
+
+  grouping nlattr {
+    nlx:struct nlattr;
+    description
+      "The header of an attribute (struct nlattr); the payload
+       follows, padded to 4 bytes.";
+    leaf nla-len {
+      type uint16;
+      description
+        "The length of header and payload, without the padding.";
+    }
+    leaf nla-type {
+      type uint16;
+      description
+        "The attribute type number, with attribute-type-flags in
+         the two high bits.";
+    }
+  }
+
+  grouping nlmsgerr {
+    nlx:struct nlmsgerr;
+    description
+      "The fixed header of an error message (struct nlmsgerr).";
+    leaf error {
+      type int32;
+      description
+        "The negated errno of the request, 0 on success.";
+    }
+    container msg {
+      description
+        "The header of the request answered, followed by the rest of
+         the request unless the socket set NETLINK_CAP_ACK.";
+      uses nlmsghdr;
+    }
+  }
+
+  grouping error-message {
+    nlx:fixed-header nlmsgerr;
+    nlx:name-prefix "NLMSGERR_ATTR_";
+    description
+      "An NLMSG_ERROR message, the acknowledgement of a request: the
+       error, the request, and, when the socket asked for extended
+       acknowledgements, what went wrong.";
+    uses nlmsgerr;
+    leaf text {
+      type string;
+      nlx:attr 1;
+      nlx:c-name NLMSGERR_ATTR_MSG;
+      description
+        "The error explained.";
+    }
+    leaf offs {
+      type uint32;
+      nlx:attr 2;
+      description
+        "The offset of the offending attribute from the start of
+         the request's message header.";
+    }
+    leaf cookie {
+      type binary;
+      nlx:attr 3;
+      description
+        "Data for the requester: a NEWLINK request creating an
+         interface gets its name here.";
+    }
+    leaf policy {
+      type binary;
+      nlx:attr 4;
+      description
+        "Not supported.";
+    }
+  }
+
+  grouping message-info {
+    nlx:name-prefix "NLMSGINFO_ATTR_";
+    description
+      "The attributes of the NETLINK_MSG_INFO control message
+       received with each message when the socket option is set: who
+       sent the message that caused this one.";
+    leaf process-id {
+      type uint32;
+      nlx:attr 1;
+      description
+        "The PID of the process.";
+    }
+    leaf port-id {
+      type uint32;
+      nlx:attr 2;
+      description
+        "The port (nl_pid) of the socket.";
+    }
+    leaf seq-id {
+      type uint32;
+      nlx:attr 3;
+      description
+        "The sequence number of the message.";
+    }
+  }
+
+  grouping bitset {
+    nlx:name-prefix "NLA_BITSET_";
+    description
+      "A compact bitset attribute (<netlink/netlink_bitset.h>): a
+       nest carrying the size, the value and the mask of valid bits
+       as little-endian arrays of 32-bit words, and optionally the
+       bits by name.  snl(3) reads it into a struct snl_attr_bitset
+       (snl_attr_get_bitset_c()).";
+    leaf nomask {
+      type empty;
+      nlx:attr 1;
+      description
+        "The mask is not provided: every bit is valid.";
+    }
+    leaf size {
+      type uint32;
+      nlx:attr 2;
+      description
+        "The number of bits.";
+    }
+    list bits {
+      nlx:attr 3;
+      nlx:array;
+      nlx:name-prefix "NLA_BITSET_BIT_";
+      description
+        "The bits by name, one nest each.";
+      leaf index {
+        type uint32;
+        nlx:attr 1;
+        description
+          "The bit's position.";
+      }
+      leaf name {
+        type string;
+        nlx:attr 2;
+        description
+          "The bit's name.";
+      }
+      leaf value {
+        type empty;
+        nlx:attr 3;
+        description
+          "Present if the bit is set.";
+      }
+    }
+    leaf value {
+      type binary;
+      nlx:attr 4;
+      description
+        "The bits, as an array of 32-bit words, size bits rounded
+         up to a word.";
+    }
+    leaf mask {
+      type binary;
+      nlx:attr 5;
+      description
+        "The bits that are valid, the same shape as value.";
+    }
+  }
+}

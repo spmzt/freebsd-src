@@ -1,0 +1,1007 @@
+// SPDX-License-Identifier: BSD-2-Clause
+//
+// Copyright (c) 2026 Pouria Mousavizadeh Tehrani <pouria@FreeBSD.org>
+
+module freebsd-rtnetlink-route {
+  yang-version 1.1;
+  namespace "urn:freebsd:yang:freebsd-rtnetlink-route";
+  prefix rtroute;
+
+  import freebsd-netlink-extensions {
+    prefix nlx;
+  }
+  import freebsd-netlink-types {
+    prefix nlt;
+  }
+
+  organization
+    "FreeBSD";
+  contact
+    "Pouria Mousavizadeh Tehrani <pouria@FreeBSD.org>";
+  description
+    "The route messages of FreeBSD's NETLINK_ROUTE protocol,
+     RTM_NEWROUTE, RTM_DELROUTE and RTM_GETROUTE, as
+     <netlink/route/route.h> defines them: the fixed header (struct
+     rtmsg), the RTA_ attributes, the metrics, and the multipath
+     attribute carrying the nexthops of an ECMP route.
+
+     The kernel names the attributes NL_RTA_ and NL_RTAX_ because
+     RTA_ and RTAX_ are the routing socket's; userland sees both.";
+  reference
+    "netlink(4), route(8), route(4)";
+
+  revision 2026-10-14 {
+    description
+      "Initial revision, for FreeBSD 16.0-CURRENT (main at
+       84f790e5b6cc).";
+  }
+
+  nlx:protocol NETLINK_ROUTE;
+  nlx:uapi-header "netlink/route/route.h";
+
+  typedef route-type {
+    type enumeration {
+      enum unspec {
+        value 0;
+        description
+          "RTN_UNSPEC.";
+      }
+      enum unicast {
+        value 1;
+        description
+          "RTN_UNICAST: a unicast route.";
+      }
+      enum local {
+        value 2;
+        description
+          "RTN_LOCAL: not supported; a local address's route is
+           unicast with RTF_LOCAL in rtflags.";
+      }
+      enum broadcast {
+        value 3;
+        description
+          "RTN_BROADCAST.";
+      }
+      enum anycast {
+        value 4;
+        description
+          "RTN_ANYCAST.";
+      }
+      enum multicast {
+        value 5;
+        description
+          "RTN_MULTICAST.";
+      }
+      enum blackhole {
+        value 6;
+        description
+          "RTN_BLACKHOLE: drop silently (RTF_BLACKHOLE).";
+      }
+      enum unreachable {
+        value 7;
+        description
+          "RTN_UNREACHABLE: refuse (RTF_REJECT).";
+      }
+      enum prohibit {
+        value 8;
+        description
+          "RTN_PROHIBIT: the kernel sends this for RTF_REJECT and
+           reads it as RTF_REJECT too.";
+      }
+      enum throw {
+        value 9;
+        description
+          "Not supported.";
+      }
+      enum nat {
+        value 10;
+        description
+          "Not supported.";
+      }
+      enum xresolve {
+        value 11;
+        description
+          "Not supported.";
+      }
+    }
+    nlx:width 8;
+    nlx:name-prefix "RTN_";
+    description
+      "The type of a route, rtm_type (RFC 3549 3.1.1).";
+  }
+
+  typedef route-protocol {
+    type enumeration {
+      enum unspec {
+        value 0;
+        description
+          "RTPROT_UNSPEC: unknown; the kernel then guesses from
+           the flags when sending.";
+      }
+      enum redirect {
+        value 1;
+        description
+          "RTPROT_REDIRECT: an ICMP redirect.";
+      }
+      enum kernel {
+        value 2;
+        description
+          "RTPROT_KERNEL: the kernel itself.";
+      }
+      enum boot {
+        value 3;
+        description
+          "RTPROT_BOOT.";
+      }
+      enum static {
+        value 4;
+        description
+          "RTPROT_STATIC: an administrator (RTF_STATIC).";
+      }
+      enum gated {
+        value 8;
+      }
+      enum ra {
+        value 9;
+        description
+          "RTPROT_RA: a router advertisement.";
+      }
+      enum zebra {
+        value 11;
+        description
+          "RTPROT_ZEBRA: also guessed from RTF_PROTO1.";
+      }
+      enum bird {
+        value 12;
+      }
+      enum dnrouted {
+        value 13;
+      }
+      enum xorp {
+        value 14;
+      }
+      enum ntk {
+        value 15;
+      }
+      enum dhcp {
+        value 16;
+      }
+      enum mrouted {
+        value 17;
+      }
+      enum keepalived {
+        value 18;
+      }
+      enum babel {
+        value 42;
+      }
+      enum openr {
+        value 99;
+      }
+      enum bgp {
+        value 186;
+      }
+      enum isis {
+        value 187;
+      }
+      enum ospf {
+        value 188;
+      }
+      enum rip {
+        value 189;
+      }
+      enum eigrp {
+        value 192;
+      }
+    }
+    nlx:width 8;
+    nlx:name-prefix "RTPROT_";
+    description
+      "Who installed a route, rtm_protocol (RFC 3549 3.1.1): the
+       nexthop's origin, which a program sets when it adds the
+       route; above RTPROT_STATIC the kernel keeps the value for
+       the program's information only.  The header's RTPROT_MRT is
+       1, the same as RTPROT_REDIRECT (Linux has 10), so it is not
+       here.";
+  }
+
+  typedef scope {
+    type enumeration {
+      enum universe {
+        value 0;
+        description
+          "RT_SCOPE_UNIVERSE: the only scope the kernel sends.";
+      }
+      enum site {
+        value 200;
+        description
+          "RT_SCOPE_SITE.";
+      }
+      enum link {
+        value 253;
+        description
+          "RT_SCOPE_LINK.";
+      }
+      enum host {
+        value 254;
+        description
+          "RT_SCOPE_HOST.";
+      }
+      enum nowhere {
+        value 255;
+        description
+          "RT_SCOPE_NOWHERE.";
+      }
+    }
+    nlx:width 8;
+    nlx:name-prefix "RT_SCOPE_";
+    description
+      "The distance to a destination, rtm_scope (RFC 3549 3.1.1);
+       the values between universe and site are the user's.";
+  }
+
+  typedef route-message-flags {
+    type bits {
+      bit notify {
+        position 8;
+        description
+          "RTM_F_NOTIFY: not supported.";
+      }
+      bit cloned {
+        position 9;
+        description
+          "RTM_F_CLONED: not supported.";
+      }
+      bit equalize {
+        position 10;
+        description
+          "RTM_F_EQUALIZE: not supported.";
+      }
+      bit prefix {
+        position 11;
+        description
+          "RTM_F_PREFIX: not supported.";
+      }
+      bit lookup-table {
+        position 12;
+        description
+          "RTM_F_LOOKUP_TABLE: not supported.";
+      }
+      bit fib-match {
+        position 13;
+        description
+          "RTM_F_FIB_MATCH: not supported.";
+      }
+      bit offload {
+        position 14;
+        description
+          "RTM_F_OFFLOAD: not supported.";
+      }
+      bit trap {
+        position 15;
+        description
+          "RTM_F_TRAP: not supported.";
+      }
+      bit offload-failed {
+        position 29;
+        description
+          "RTM_F_OFFLOAD_FAILED: not supported.";
+      }
+    }
+    nlx:name-prefix "RTM_F_";
+    description
+      "The flags of a route message, rtm_flags (RFC 3549 3.1.1):
+       the nexthop flags in bits 0 to 6 (nexthop-flags), these
+       above.  FreeBSD sends 0 and reads none; a route's flags are
+       in rtflags.";
+  }
+
+  typedef nexthop-flags {
+    type bits {
+      bit dead {
+        position 0;
+        description
+          "RTNH_F_DEAD: not supported.";
+      }
+      bit pervasive {
+        position 1;
+        description
+          "RTNH_F_PERVASIVE: not supported.";
+      }
+      bit onlink {
+        position 2;
+        description
+          "RTNH_F_ONLINK: not supported.";
+      }
+      bit offload {
+        position 3;
+        description
+          "RTNH_F_OFFLOAD: not supported.";
+      }
+      bit linkdown {
+        position 4;
+        description
+          "RTNH_F_LINKDOWN: not supported.";
+      }
+      bit unresolved {
+        position 5;
+        description
+          "RTNH_F_UNRESOLVED: not supported.";
+      }
+      bit trap {
+        position 6;
+        description
+          "RTNH_F_TRAP: not supported.";
+      }
+    }
+    nlx:width 8;
+    nlx:name-prefix "RTNH_F_";
+    description
+      "The flags of a nexthop of a multipath route, rtnh_flags;
+       FreeBSD sends 0.";
+  }
+
+  typedef route-flags {
+    type bits {
+      bit up {
+        position 0;
+        description
+          "RTF_UP: usable.";
+      }
+      bit gateway {
+        position 1;
+        description
+          "RTF_GATEWAY: the destination is reached through a
+           gateway.";
+      }
+      bit host {
+        position 2;
+        description
+          "RTF_HOST: a host route.";
+      }
+      bit reject {
+        position 3;
+        description
+          "RTF_REJECT: unreachable.";
+      }
+      bit dynamic {
+        position 4;
+        description
+          "RTF_DYNAMIC: created by a redirect.";
+      }
+      bit modified {
+        position 5;
+        description
+          "RTF_MODIFIED: changed by a redirect.";
+      }
+      bit done {
+        position 6;
+        description
+          "RTF_DONE: a routing socket message was confirmed.";
+      }
+      bit xresolve {
+        position 9;
+        description
+          "RTF_XRESOLVE: an external daemon resolves the name.";
+      }
+      bit lldata {
+        position 10;
+        description
+          "RTF_LLDATA (RTF_LLINFO): a link-layer entry.";
+      }
+      bit static {
+        position 11;
+        description
+          "RTF_STATIC: added by hand.";
+      }
+      bit blackhole {
+        position 12;
+        description
+          "RTF_BLACKHOLE: discard packets.";
+      }
+      bit proto2 {
+        position 14;
+        description
+          "RTF_PROTO2: a routing protocol's.";
+      }
+      bit proto1 {
+        position 15;
+        description
+          "RTF_PROTO1: a routing protocol's; zebra's by
+           convention.";
+      }
+      bit proto3 {
+        position 18;
+        description
+          "RTF_PROTO3: a routing protocol's.";
+      }
+      bit fixedmtu {
+        position 19;
+        description
+          "RTF_FIXEDMTU: the MTU was set explicitly; the metrics
+           carry it.";
+      }
+      bit pinned {
+        position 20;
+        description
+          "RTF_PINNED: immutable, an interface's own route.";
+      }
+      bit local {
+        position 21;
+        description
+          "RTF_LOCAL: a local address's.";
+      }
+      bit broadcast {
+        position 22;
+        description
+          "RTF_BROADCAST: a broadcast address's.";
+      }
+      bit multicast {
+        position 23;
+        description
+          "RTF_MULTICAST: a multicast address's.";
+      }
+      bit sticky {
+        position 28;
+        description
+          "RTF_STICKY: always route the destination to the
+           source.";
+      }
+      bit gwflag-compat {
+        position 31;
+        description
+          "RTF_GWFLAG_COMPAT: compatibility with the routing
+           socket's gateway flag.";
+      }
+    }
+    nlx:name-prefix "RTF_";
+    description
+      "A route's flags, RTF_* of <net/route.h>, as the routing
+       socket shows them; carried in rtflags.";
+  }
+
+  grouping rtmsg {
+    nlx:struct rtmsg;
+    description
+      "The fixed header of a route message (struct rtmsg).";
+    leaf rtm-family {
+      type nlt:address-family;
+      description
+        "The address family of the destination: inet or inet6.  In
+         a dump request, unspec dumps both.";
+    }
+    leaf rtm-dst-len {
+      type uint8;
+      description
+        "The prefix length of the destination.";
+    }
+    leaf rtm-src-len {
+      type uint8;
+      description
+        "Not used, 0.";
+    }
+    leaf rtm-tos {
+      type uint8;
+      description
+        "Not used, 0.";
+    }
+    leaf rtm-table {
+      type uint8;
+      description
+        "The FIB, when it fits a byte; table has it in full.  In a
+         dump request 0 with no table means every FIB; in a get
+         request FIB 0.";
+    }
+    leaf rtm-protocol {
+      type route-protocol;
+      description
+        "Who installed the route.";
+    }
+    leaf rtm-scope {
+      type scope;
+      description
+        "Always universe.";
+    }
+    leaf rtm-type {
+      type route-type;
+      description
+        "The route's type, from its nexthop's flags.";
+    }
+    leaf rtm-flags {
+      type route-message-flags;
+      description
+        "Always 0.";
+    }
+  }
+
+  grouping rtnexthop {
+    nlx:struct rtnexthop;
+    description
+      "The header of each nexthop of a multipath route (struct
+       rtnexthop); its own attributes follow, within rtnh-len.";
+    leaf rtnh-len {
+      type uint16;
+      description
+        "The length of header and attributes.";
+    }
+    leaf rtnh-flags {
+      type nexthop-flags;
+      description
+        "Always 0.";
+    }
+    leaf rtnh-hops {
+      type uint8;
+      description
+        "The nexthop's weight, capped at 255.";
+    }
+    leaf rtnh-ifindex {
+      type int32;
+      description
+        "The transmit interface.";
+    }
+  }
+
+  grouping rtvia {
+    nlx:struct rtvia;
+    description
+      "A gateway of another family than the destination (struct
+       rtvia): the family, then the address.";
+    leaf rtvia-family {
+      type nlt:address-family;
+      description
+        "AF_INET or AF_INET6.";
+    }
+    leaf rtvia-addr {
+      type binary {
+        length "4 | 16";
+      }
+      description
+        "The address.";
+    }
+  }
+
+  grouping metrics-attrs {
+    nlx:name-prefix "NL_RTAX_";
+    description
+      "RTA_METRICS: the metrics of a route (NL_RTAX_, RTAX_ in
+       userland).  FreeBSD keeps the MTU only.";
+    leaf lock {
+      type uint32;
+      nlx:attr 1;
+      description
+        "Not supported.";
+    }
+    leaf mtu {
+      type uint32;
+      nlx:attr 2;
+      description
+        "The path MTU.  Sent when the route has one set
+         (RTF_FIXEDMTU); read when adding or changing.";
+    }
+    leaf window {
+      type uint32;
+      nlx:attr 3;
+      description
+        "Not supported.";
+    }
+    leaf rtt {
+      type uint32;
+      nlx:attr 4;
+      description
+        "Not supported.";
+    }
+    leaf rttvar {
+      type uint32;
+      nlx:attr 5;
+      description
+        "Not supported.";
+    }
+    leaf ssthresh {
+      type uint32;
+      nlx:attr 6;
+      description
+        "Not supported.";
+    }
+    leaf cwnd {
+      type uint32;
+      nlx:attr 7;
+      description
+        "Not supported.";
+    }
+    leaf advmss {
+      type uint32;
+      nlx:attr 8;
+      description
+        "Not supported.";
+    }
+    leaf reordering {
+      type uint32;
+      nlx:attr 9;
+      description
+        "Not supported.";
+    }
+    leaf hoplimit {
+      type uint32;
+      nlx:attr 10;
+      description
+        "Not supported.";
+    }
+    leaf initcwnd {
+      type uint32;
+      nlx:attr 11;
+      description
+        "Not supported.";
+    }
+    leaf features {
+      type uint32;
+      nlx:attr 12;
+      description
+        "Not supported (RTAX_FEATURE_ECN, SACK, TIMESTAMP,
+         ALLFRAG).";
+    }
+    leaf rto-min {
+      type uint32;
+      nlx:attr 13;
+      description
+        "Not supported.";
+    }
+    leaf initrwnd {
+      type uint32;
+      nlx:attr 14;
+      description
+        "Not supported.";
+    }
+    leaf quickack {
+      type uint32;
+      nlx:attr 15;
+      description
+        "Not supported.";
+    }
+    leaf cc-algo {
+      type string;
+      nlx:attr 16;
+      description
+        "Not supported.";
+    }
+    leaf fastopen-no-cookie {
+      type uint32;
+      nlx:attr 17;
+      description
+        "Not supported.";
+    }
+  }
+
+  grouping nexthop-attrs {
+    nlx:name-prefix "NL_RTA_";
+    description
+      "The attributes of one nexthop of a multipath route, after
+       its rtnexthop header: those of route-attrs that are the
+       nexthop's own.";
+    leaf gateway {
+      type nlt:ip-address;
+      nlx:attr 5;
+      description
+        "The gateway, when of the destination's family.";
+    }
+    leaf priority {
+      type uint32;
+      nlx:attr 6;
+      description
+        "The nexthop's metric.  Always sent.";
+    }
+    container metrics {
+      nlx:attr 8;
+      description
+        "The MTU, when set.";
+      uses metrics-attrs;
+    }
+    leaf rtflags {
+      type route-flags;
+      nlx:attr 14;
+      description
+        "The nexthop's flags, sent when they differ from the first
+         nexthop's, which the message carries.";
+    }
+    container via {
+      nlx:attr 18;
+      description
+        "The gateway, when of the other family.";
+      uses rtvia;
+    }
+    leaf expires {
+      type nlt:seconds;
+      nlx:attr 23;
+      description
+        "Seconds until the nexthop expires, when it does.";
+    }
+  }
+
+  grouping multipath-nexthop {
+    nlx:fixed-header rtnexthop;
+    description
+      "One nexthop of a multipath route: its header, then its
+       attributes.";
+    uses rtnexthop;
+    uses nexthop-attrs;
+  }
+
+  grouping route-attrs {
+    nlx:name-prefix "NL_RTA_";
+    description
+      "The attributes of a route message (NL_RTA_, RTA_ in
+       userland).";
+    leaf dst {
+      type nlt:ip-address;
+      nlx:attr 1;
+      description
+        "The destination prefix, of rtm-dst-len bits.  Always
+         sent; read in every request.";
+    }
+    leaf src {
+      type nlt:ip-address;
+      nlx:attr 2;
+      description
+        "Not supported.";
+    }
+    leaf iif {
+      type nlt:ifindex;
+      nlx:attr 3;
+      description
+        "Not supported.";
+    }
+    leaf oif {
+      type nlt:ifindex;
+      nlx:attr 4;
+      description
+        "The transmit interface.  Always sent, the first
+         nexthop's for a multipath route; read when adding or
+         changing, and as a filter in a dump.";
+    }
+    leaf gateway {
+      type nlt:ip-address;
+      nlx:attr 5;
+      description
+        "The gateway, when of the destination's family.  Sent when
+         the route has one (RTF_GATEWAY); read when adding or
+         changing.";
+    }
+    leaf priority {
+      type uint32;
+      nlx:attr 6;
+      description
+        "The metric (route(8) and RTAX metrics' weight are
+         separate).  Always sent, the selected nexthop's for a
+         multipath route; read when adding or changing.";
+    }
+    leaf prefsrc {
+      type nlt:ip-address;
+      nlx:attr 7;
+      description
+        "The preferred source address (RTA_IFA too).  Sent when
+         the nexthop has one; read when adding or changing.";
+    }
+    container metrics {
+      nlx:attr 8;
+      description
+        "The metrics.  Sent when the route has an MTU set; read
+         when adding or changing.";
+      uses metrics-attrs;
+    }
+    list multipath {
+      nlx:attr 9;
+      nlx:array;
+      description
+        "The nexthops of a multipath (ECMP) route, each a
+         rtnexthop header followed by its attributes, back to
+         back.  Sent for a nexthop group; read when adding or
+         changing, making a group.";
+      uses multipath-nexthop;
+    }
+    leaf knh-id {
+      type uint32;
+      nlx:attr 10;
+      description
+        "FreeBSD's own (RTA_PROTOINFO in Linux): the kernel's
+         index of the nexthop or nexthop group.  Always sent.";
+    }
+    leaf flow {
+      type uint32;
+      nlx:attr 11;
+      description
+        "Not supported.";
+    }
+    leaf cacheinfo {
+      type binary;
+      nlx:attr 12;
+      description
+        "Not supported.";
+    }
+    leaf weight {
+      type uint32;
+      nlx:attr 13;
+      description
+        "FreeBSD's own (RTA_SESSION in Linux): the path's weight,
+         sent when it is not the default; read when adding or
+         changing.";
+    }
+    leaf rtflags {
+      type route-flags;
+      nlx:attr 14;
+      description
+        "FreeBSD's own (RTA_MP_ALGO in Linux): the route's flags.
+         Always sent; read when adding or changing.";
+    }
+    leaf table {
+      type nlt:fibnum;
+      nlx:attr 15;
+      description
+        "The FIB.  Always sent; read in every request, absent and
+         rtm-table 0 meaning every FIB in a dump.";
+    }
+    leaf mark {
+      type uint32;
+      nlx:attr 16;
+      description
+        "Not supported.";
+    }
+    leaf mfc-stats {
+      type binary;
+      nlx:attr 17;
+      description
+        "Not supported.";
+    }
+    container via {
+      nlx:attr 18;
+      description
+        "The gateway, when of the other family (IPv4 over IPv6).
+         Sent then; read when adding or changing.";
+      uses rtvia;
+    }
+    leaf newdst {
+      type binary;
+      nlx:attr 19;
+      description
+        "Not supported.";
+    }
+    leaf pref {
+      type uint8;
+      nlx:attr 20;
+      description
+        "Not supported.";
+    }
+    leaf encap-type {
+      type uint16;
+      nlx:attr 21;
+      description
+        "Not supported.";
+    }
+    leaf encap {
+      type binary;
+      nlx:attr 22;
+      description
+        "Not supported.";
+    }
+    leaf expires {
+      type nlt:seconds;
+      nlx:attr 23;
+      description
+        "Seconds until the route expires.  Sent when the nexthop
+         expires; read when adding or changing.";
+    }
+    leaf pad {
+      type binary;
+      nlx:attr 24;
+      description
+        "Padding; not used.";
+    }
+    leaf uid {
+      type uint32;
+      nlx:attr 25;
+      description
+        "Not supported.";
+    }
+    leaf ttl-propagate {
+      type uint8;
+      nlx:attr 26;
+      description
+        "Not supported.";
+    }
+    leaf ip-proto {
+      type uint8;
+      nlx:attr 27;
+      description
+        "Not supported.";
+    }
+    leaf sport {
+      type uint16;
+      nlx:attr 28;
+      description
+        "Not supported.";
+    }
+    leaf dport {
+      type uint16;
+      nlx:attr 29;
+      description
+        "Not supported.";
+    }
+    leaf nh-id {
+      type uint32;
+      nlx:attr 30;
+      description
+        "The user index of the nexthop or nexthop group
+         (freebsd-rtnetlink-nexthop).  Sent when the route uses
+         one; read when adding or changing, instead of a gateway.";
+    }
+  }
+
+  grouping route-message {
+    nlx:fixed-header rtmsg;
+    description
+      "A route message: the fixed header, then the attributes.";
+    uses rtmsg;
+    uses route-attrs;
+  }
+
+  rpc getroute {
+    nlx:msg-type RTM_GETROUTE;
+    nlx:do;
+    nlx:dump;
+    description
+      "With NLM_F_DUMP, list the routes of the FIB named by table,
+       or of every FIB, of the family rtm-family, or of both;
+       without, look dst up in the FIB (the route a packet to it
+       would take).  A non-vnet jail may ask.";
+    input {
+      uses route-message;
+    }
+    output {
+      list route {
+        description
+          "One RTM_NEWROUTE message per route.";
+        uses route-message;
+      }
+    }
+  }
+
+  rpc newroute {
+    nlx:msg-type RTM_NEWROUTE;
+    nlx:do;
+    description
+      "Add a route to dst/rtm-dst-len in table (PRIV_NET_ROUTE):
+       through gateway or via on oif, or nh-id, or the nexthops of
+       multipath; with NLM_F_REPLACE, change the existing one;
+       with NLM_F_EXCL, fail if it exists.";
+    input {
+      uses route-message;
+    }
+  }
+
+  rpc delroute {
+    nlx:msg-type RTM_DELROUTE;
+    nlx:do;
+    description
+      "Delete the route to dst/rtm-dst-len in table, the one
+       through gateway when there are several (PRIV_NET_ROUTE).";
+    input {
+      uses route-message;
+    }
+  }
+
+  notification route-new {
+    nlx:msg-type RTM_NEWROUTE;
+    nlx:group RTNLGRP_IPV4_ROUTE;
+    description
+      "A route was added or changed, in any FIB; on
+       RTNLGRP_IPV4_ROUTE or RTNLGRP_IPV6_ROUTE by its family.";
+    uses route-message;
+  }
+
+  notification route-del {
+    nlx:msg-type RTM_DELROUTE;
+    nlx:group RTNLGRP_IPV4_ROUTE;
+    description
+      "A route was deleted; on RTNLGRP_IPV4_ROUTE or
+       RTNLGRP_IPV6_ROUTE by its family.";
+    uses route-message;
+  }
+}

@@ -1,0 +1,222 @@
+// SPDX-License-Identifier: BSD-2-Clause
+//
+// Copyright (c) 2026 Pouria Mousavizadeh Tehrani <pouria@FreeBSD.org>
+
+module freebsd-netlink-extensions {
+  yang-version 1.1;
+  namespace "urn:freebsd:yang:freebsd-netlink-extensions";
+  prefix nlx;
+
+  organization
+    "FreeBSD";
+  contact
+    "Pouria Mousavizadeh Tehrani <pouria@FreeBSD.org>";
+  description
+    "The statements that make a YANG module a description of a
+     netlink(4) protocol: the attribute type numbers, the C names of
+     the uAPI headers, the fixed headers in front of the attributes,
+     the layout of structures carried in attributes, and the message
+     types, commands, flags and multicast groups of the operations.
+
+     A netlink protocol module is read as follows.
+
+     A grouping is an attribute set, or the fixed header of a
+     message, or both.  A leaf, leaf-list, container, list or choice
+     that carries 'nlx:attr' is an attribute; a leaf that does not,
+     inside a grouping marked 'nlx:struct', is a member of a C
+     structure: a fixed header, or the structure a binary attribute
+     carries.  Attributes nest: a container with 'nlx:attr' is a
+     nested attribute whose children are its own attribute set; a
+     list with 'nlx:attr' is a nested attribute that may be repeated
+     (one list entry per occurrence), or, with 'nlx:array', one
+     container attribute whose children are the entries; a leaf-list
+     is a repeated scalar attribute, or, with 'nlx:array', a container
+     of scalars.  A choice with 'nlx:attr' is one attribute whose
+     format depends on the value of another ('nlx:selector'); a
+     choice or case without it only says which attributes exclude
+     each other.
+
+     The C name of an attribute is the 'nlx:name-prefix' in force
+     followed by the node's name in upper case with '-' turned into
+     '_', unless 'nlx:c-name' says otherwise.  The C name of a
+     structure member is its leaf name with '-' turned into '_'.
+
+     The wire type of an attribute or structure member is its YANG
+     type: uint8..uint64 and int8..int64 are integers of that size,
+     boolean a one byte boolean, empty a flag (an attribute without
+     payload), string a NUL-terminated string, binary bytes.  An
+     enumeration or bits type is an unsigned integer of 'nlx:width'
+     bits (32 unless said).
+
+     An rpc is a request and its reply; a notification a message the
+     kernel multicasts.  'nlx:msg-type' names the message type of a
+     NETLINK_ROUTE operation, 'nlx:cmd' the command of a generic
+     netlink one; 'nlx:do' and 'nlx:dump' say whether the operation
+     answers a request for one object or dumps many (NLM_F_DUMP).
+
+     The names used by yanl, the generator of snl(3) parsers, are
+     exactly these.";
+
+  revision 2026-10-14 {
+    description
+      "Initial revision, for FreeBSD 16.0-CURRENT (main at
+       84f790e5b6cc).";
+  }
+
+  extension protocol {
+    argument name;
+    description
+      "The netlink protocol a module describes, by the name of its
+       number in <netlink/netlink.h>: NETLINK_ROUTE or
+       NETLINK_GENERIC.  Placed in a module.";
+  }
+
+  extension family {
+    argument name;
+    description
+      "The name a generic netlink family is registered with
+       (genl_register_family(9)), which a program resolves to its
+       message type through the nlctrl family.  Placed in a module.";
+  }
+
+  extension version {
+    argument number;
+    description
+      "The version a generic netlink family is registered with, the
+       CTRL_ATTR_VERSION the nlctrl family reports for it.  Placed in
+       a module.";
+  }
+
+  extension uapi-header {
+    argument path;
+    description
+      "The header, relative to /usr/include, defining the C names a
+       module gives.  Placed in a module.";
+  }
+
+  extension struct {
+    argument name;
+    description
+      "The C structure a grouping describes, member by member, in
+       order: a fixed header, or the contents of a binary attribute.
+       On a container that is an attribute, the attribute carries
+       this structure; on a list that is an attribute, a packed array
+       of it.";
+  }
+
+  extension fixed-header {
+    argument grouping;
+    description
+      "On the grouping of a message, or on a list that is an array
+       attribute: the grouping, marked 'nlx:struct', describing the
+       structure that precedes the attributes.  The message grouping
+       also uses that grouping, so that the fields appear in the
+       data tree.";
+  }
+
+  extension attr {
+    argument value;
+    description
+      "The attribute type number (nla_type) of the node, in the
+       attribute set of its parent.";
+  }
+
+  extension name-prefix {
+    argument prefix;
+    description
+      "The prefix of the C names of the attributes of the node and
+       of its descendants that do not set their own: 'IFLA_' for the
+       link attributes.  An attribute set used from another node
+       keeps the prefix of its grouping.";
+  }
+
+  extension c-name {
+    argument name;
+    description
+      "The C name of the node, when it is not derived from its name
+       and the prefix in force.";
+  }
+
+  extension width {
+    argument bits;
+    description
+      "The width, in bits, of a leaf of an enumeration or bits type
+       on the wire: 8, 16, 32 or 64.  On a typedef, the default for
+       the leaves of that type.";
+  }
+
+  extension array {
+    description
+      "On a list or leaf-list that is an attribute: the attribute is
+       one container whose child attributes are the entries, in
+       order, their own type numbers carrying no meaning (they count
+       up from one, repeat the parent's, or are zero, depending on
+       the family).  Without it, a list or leaf-list is one attribute
+       per entry, all with the same type number.";
+  }
+
+  extension selector {
+    argument leaf;
+    description
+      "On a choice that is an attribute: the sibling leaf whose value
+       selects the case, and so the format of the attribute.";
+  }
+
+  extension selector-value {
+    argument value;
+    description
+      "On a case of a choice with a selector: the value of the
+       selector that selects it.";
+  }
+
+  extension msg-type {
+    argument name;
+    description
+      "On an rpc or notification of a NETLINK_ROUTE module: the
+       message type (nlmsg_type) of the request, or of the
+       notification.  In an output statement, the type of the
+       replies when it differs from the request's.";
+  }
+
+  extension cmd {
+    argument name;
+    description
+      "On an rpc or notification of a generic netlink module: the
+       command (genlmsghdr cmd) of the request, or of the
+       notification.  In an output statement, the command of the
+       replies when it differs from the request's.";
+  }
+
+  extension do {
+    description
+      "On an rpc: the request without NLM_F_DUMP is answered, for one
+       object (GENL_CMD_CAP_DO).";
+  }
+
+  extension dump {
+    description
+      "On an rpc: the request with NLM_F_DUMP is answered with a
+       multipart dump of every matching object (GENL_CMD_CAP_DUMP).";
+  }
+
+  extension privilege {
+    argument name;
+    description
+      "On an rpc: the privilege of <sys/priv.h> the request needs.";
+  }
+
+  extension securelevel {
+    argument level;
+    description
+      "On an rpc: the kern.securelevel from which the request is
+       refused.";
+  }
+
+  extension group {
+    argument name;
+    description
+      "On a notification: the multicast group it is sent to, the
+       name of its number in the uAPI header for NETLINK_ROUTE, or
+       its registered name for a generic netlink family.";
+  }
+}

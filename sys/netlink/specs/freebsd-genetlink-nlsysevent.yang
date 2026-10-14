@@ -1,0 +1,136 @@
+// SPDX-License-Identifier: BSD-2-Clause
+//
+// Copyright (c) 2026 Pouria Mousavizadeh Tehrani <pouria@FreeBSD.org>
+
+module freebsd-genetlink-nlsysevent {
+  yang-version 1.1;
+  namespace "urn:freebsd:yang:freebsd-genetlink-nlsysevent";
+  prefix nlse;
+
+  import freebsd-netlink-extensions {
+    prefix nlx;
+  }
+  import freebsd-genetlink {
+    prefix genl;
+  }
+
+  organization
+    "FreeBSD";
+  contact
+    "Pouria Mousavizadeh Tehrani <pouria@FreeBSD.org>";
+  description
+    "The nlsysevent generic netlink family, as
+     <netlink/netlink_sysevent.h> defines it: the kernel's device
+     and system events (devctl(4), what devd(8) reads), multicast
+     on one group per system.  A program joins the groups named
+     after the systems it wants, 'IFNET' or 'ZFS', and receives
+     each event as a NLSE_CMD_NEWEVENT message.";
+  reference
+    "devctl(4), devd(8)";
+
+  revision 2026-10-14 {
+    description
+      "Initial revision, for FreeBSD 16.0-CURRENT (main at
+       84f790e5b6cc).";
+  }
+
+  nlx:protocol NETLINK_GENERIC;
+  nlx:family nlsysevent;
+  nlx:version 2;
+  nlx:uapi-header "netlink/netlink_sysevent.h";
+
+  typedef command {
+    type enumeration {
+      enum unspec {
+        value 0;
+      }
+      enum newevent {
+        value 1;
+        description
+          "NLSE_CMD_NEWEVENT: an event.";
+      }
+    }
+    nlx:width 8;
+    nlx:name-prefix "NLSE_CMD_";
+    description
+      "The commands of the family: one, the kernel's notice.";
+  }
+
+  typedef system {
+    type enumeration {
+      enum ACPI;
+      enum AEON;
+      enum CAM;
+      enum CARP;
+      enum coretemp;
+      enum DEVFS;
+      enum device;
+      enum ETHERNET;
+      enum GEOM;
+      enum HYPERV_NIC_VF;
+      enum IFNET;
+      enum INFINIBAND;
+      enum KERNEL;
+      enum nvme;
+      enum PMU;
+      enum RCTL;
+      enum USB;
+      enum VFS;
+      enum VT;
+      enum ZFS;
+    }
+    description
+      "The systems the family registers a multicast group for at
+       load, by name; a system not here gets its group at its
+       first event, up to 64 groups.";
+  }
+
+  grouping event-attrs {
+    nlx:name-prefix "NLSE_ATTR_";
+    description
+      "The attributes of an event: the fields of a devctl(4)
+       notification.";
+    leaf system {
+      type string;
+      nlx:attr 1;
+      description
+        "The system, the group's name.";
+    }
+    leaf subsystem {
+      type string;
+      nlx:attr 2;
+      description
+        "The subsystem: 'LINK_UP' of IFNET, 'CDEV' of DEVFS.";
+    }
+    leaf type {
+      type string;
+      nlx:attr 3;
+      description
+        "The type of the event: 'CREATE', 'DESTROY', the interface
+         name of a LINK_UP.";
+    }
+    leaf data {
+      type string;
+      nlx:attr 4;
+      description
+        "The event's data, as devd(8) sees it; absent when there
+         is none.";
+    }
+  }
+
+  grouping event-message {
+    nlx:fixed-header genl:genlmsghdr;
+    uses genl:genlmsghdr;
+    description
+      "An event message.";
+    uses event-attrs;
+  }
+
+  notification event {
+    nlx:cmd NLSE_CMD_NEWEVENT;
+    nlx:group system;
+    description
+      "An event of a system, on that system's group.";
+    uses event-message;
+  }
+}

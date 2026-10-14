@@ -1,0 +1,378 @@
+// SPDX-License-Identifier: BSD-2-Clause
+//
+// Copyright (c) 2026 Pouria Mousavizadeh Tehrani <pouria@FreeBSD.org>
+
+module freebsd-rtnetlink-link-snl {
+  yang-version 1.1;
+  namespace "urn:freebsd:yang:freebsd-rtnetlink-link-snl";
+  prefix rtlink-snl;
+
+  import freebsd-netlink-snl {
+    prefix snl;
+  }
+  import freebsd-rtnetlink-link {
+    prefix rtlink;
+  }
+
+  organization
+    "FreeBSD";
+  contact
+    "Pouria Mousavizadeh Tehrani <pouria@FreeBSD.org>";
+  description
+    "The snl(3) parsers of the interface messages: snl_rtm_link_parser
+     and struct snl_parsed_link of <netlink/netlink_snl_route_parsers.h>,
+     the SR-IOV virtual functions as struct snl_parsed_vf, and
+     snl_rtm_link_parser_simple.";
+
+  revision 2026-10-14 {
+    description
+      "Initial revision.";
+  }
+
+  snl:code '
+    enum snl_vf_driver_field_type {
+    	SNL_VFDF_NONE = 0,
+    	SNL_VFDF_BOOL = 1,
+    	SNL_VFDF_NUMBER = 2,
+    	SNL_VFDF_STRING = 3,
+    	SNL_VFDF_BINARY = 4,
+    };';
+
+  snl:parser _ifgroups_parser {
+    snl:doc "Element of the IFLAF_GROUP array";
+    snl:grouping rtlink:ifgroup-attrs;
+    snl:out-size "sizeof(char[IFNAMSIZ])";
+    snl:attr group {
+      snl:cb snl_attr_copy_string;
+      snl:arg-u32 "sizeof(char[IFNAMSIZ])";
+    }
+  }
+
+  snl:parser _vf_driver_field_parser {
+    snl:doc "Field of an SR-IOV VF driver namespace";
+    snl:struct snl_parsed_vf_driver_field;
+    snl:grouping rtlink:vf-driver-field-attrs;
+    snl:member name {
+      snl:attr name;
+      snl:required;
+    }
+    snl:member type {
+      snl:type "enum snl_vf_driver_field_type";
+    }
+    snl:member boolean {
+      snl:attr bool;
+      snl:tag type;
+      snl:tag-value SNL_VFDF_BOOL;
+    }
+    snl:member number {
+      snl:attr number;
+      snl:tag type;
+      snl:tag-value SNL_VFDF_NUMBER;
+    }
+    snl:member string {
+      snl:attr string;
+      snl:tag type;
+      snl:tag-value SNL_VFDF_STRING;
+    }
+    snl:member binary {
+      snl:attr binary;
+      snl:tag type;
+      snl:tag-value SNL_VFDF_BINARY;
+    }
+  }
+
+  snl:parser _vf_driver_parser {
+    snl:doc "Driver-specific state of an SR-IOV VF";
+    snl:struct snl_parsed_vf_driver;
+    snl:grouping rtlink:vf-driver-attrs;
+    snl:code '
+      static inline bool
+      _snl_vfd_get_field_multi(struct snl_state *ss, struct nlattr *nla,
+          const void *arg __unused, void *target)
+      {
+      	struct snl_parsed_vf_driver_field *field;
+      	struct snl_parray *fields = (struct snl_parray *)target;
+      	struct nlattr *field_nla;
+      	bool unknown_value;
+
+      	field = (struct snl_parsed_vf_driver_field *)snl_allocz(ss,
+      	    sizeof(*field));
+      	if (field == NULL ||
+      	    !snl_parse_header(ss, NLA_DATA(nla), NLA_DATA_LEN(nla),
+      	    &_vf_driver_field_parser, field))
+      		return (false);
+      	if (field->type != SNL_VFDF_NONE)
+      		return (snl_parray_append(ss, fields, field, 8));
+
+      	/* Ignore a field whose value type was added by a newer kernel. */
+      	unknown_value = false;
+      	NLA_FOREACH(field_nla, NLA_DATA(nla), NLA_DATA_LEN(nla)) {
+      		if (NLA_TYPE(field_nla) > IFLAF_VFDF_MAX) {
+      			unknown_value = true;
+      			break;
+      		}
+      	}
+      	return (unknown_value);
+      }';
+    snl:member name {
+      snl:attr name;
+      snl:required;
+    }
+    snl:member version {
+      snl:attr version;
+      snl:present version_present;
+      snl:required;
+    }
+    snl:member version_present {
+      snl:type bool;
+    }
+    snl:member fields {
+      snl:doc "Array of struct snl_parsed_vf_driver_field";
+      snl:type "struct snl_parray";
+      snl:attr field;
+      snl:cb _snl_vfd_get_field_multi;
+    }
+  }
+
+  snl:parser _vf_parser {
+    snl:doc "SR-IOV VF, one per IFLA_FREEBSD_VF attribute";
+    snl:struct snl_parsed_vf;
+    snl:grouping rtlink:vf-attrs;
+    snl:member attrs {
+      snl:doc "Bits indexed by IFLAF_VF_*.";
+      snl:presence-mask;
+    }
+    snl:member min_tx_rate_bps {
+      snl:attr min-tx-rate;
+      snl:present attrs;
+    }
+    snl:member max_tx_rate_bps {
+      snl:attr max-tx-rate;
+      snl:present attrs;
+    }
+    snl:member index {
+      snl:attr index;
+      snl:present index_present;
+      snl:required;
+    }
+    snl:member index_present {
+      snl:type bool;
+    }
+    snl:member vlan_count {
+      snl:attr vlan-count;
+      snl:present attrs;
+    }
+    snl:member vlan_limit {
+      snl:attr vlan-limit;
+      snl:present attrs;
+    }
+    snl:member tx_queue_count {
+      snl:attr num-tx-queues;
+      snl:present attrs;
+    }
+    snl:member rx_queue_count {
+      snl:attr num-rx-queues;
+      snl:present attrs;
+    }
+    snl:member vlan {
+      snl:attr vlan;
+      snl:present attrs;
+    }
+    snl:member vlan_proto {
+      snl:attr vlan-proto;
+      snl:present attrs;
+    }
+    snl:member vlan_pcp {
+      snl:attr vlan-pcp;
+      snl:present attrs;
+    }
+    snl:member configured {
+      snl:attr configured;
+      snl:present attrs;
+    }
+    snl:member initialized {
+      snl:attr initialized;
+      snl:present attrs;
+    }
+    snl:member vlan_mode {
+      snl:attr vlan-mode;
+      snl:present attrs;
+    }
+    snl:member allow_set_mac {
+      snl:attr allow-set-mac;
+      snl:present attrs;
+    }
+    snl:member allow_set_vlan {
+      snl:attr allow-set-vlan;
+      snl:present attrs;
+    }
+    snl:member mac_anti_spoof {
+      snl:attr mac-anti-spoof;
+      snl:present attrs;
+    }
+    snl:member allow_promisc {
+      snl:attr allow-promisc;
+      snl:present attrs;
+    }
+    snl:member traffic_allowed {
+      snl:attr traffic-allowed;
+      snl:present attrs;
+    }
+    snl:member fault_blocked {
+      snl:attr fault-blocked;
+      snl:present attrs;
+    }
+    snl:member quarantined {
+      snl:attr quarantined;
+      snl:present attrs;
+    }
+    snl:member link_state_policy {
+      snl:attr link-state-policy;
+      snl:present attrs;
+    }
+    snl:member api_version {
+      snl:attr api-version;
+      snl:present attrs;
+    }
+    snl:member mac {
+      snl:attr mac;
+      snl:present attrs;
+    }
+    snl:member drivers {
+      snl:doc "Array of struct snl_parsed_vf_driver";
+      snl:attr driver;
+      snl:use-parser _vf_driver_parser;
+    }
+  }
+
+  snl:parser _vf_status_parser {
+    snl:doc "SR-IOV state of the PF";
+    snl:struct snl_parsed_vf_status;
+    snl:grouping rtlink:vf-status-attrs;
+    snl:post _snl_vf_status_valid;
+    snl:code '
+      /* A status either reports why the query failed or the PF link state. */
+      static inline bool
+      _snl_vf_status_valid(struct snl_state *ss __unused, void *target)
+      {
+      	struct snl_parsed_vf_status *status =
+      	    (struct snl_parsed_vf_status *)target;
+
+      	return (status->error != 0 || status->pf_link_state_present);
+      }';
+    snl:member pf_link_speed {
+      snl:attr pf-link-speed;
+    }
+    snl:member error {
+      snl:attr error;
+    }
+    snl:member pf_link_state {
+      snl:attr pf-link-state;
+      snl:present pf_link_state_present;
+    }
+    snl:member present {
+      snl:type bool;
+    }
+    snl:member pf_link_state_present {
+      snl:type bool;
+    }
+    snl:member vfs {
+      snl:doc "Array of struct snl_parsed_vf";
+      snl:type "struct snl_parray";
+    }
+  }
+
+  snl:parser snl_rtm_link_parser {
+    snl:doc "RTM_<NEW|DEL|GET>LINK message parser";
+    snl:struct snl_parsed_link;
+    snl:grouping rtlink:link-message;
+    snl:nest freebsd {
+      snl:name _link_fbsd_parser;
+    }
+    snl:member ifi_index {
+      snl:type uint32_t;
+      snl:field ifi-index;
+    }
+    snl:member ifi_flags {
+      snl:field ifi-flags;
+    }
+    snl:member ifi_change {
+      snl:field ifi-change;
+    }
+    snl:member ifi_type {
+      snl:field ifi-type;
+    }
+    snl:member ifla_operstate {
+      snl:attr operstate;
+    }
+    snl:member ifla_carrier {
+      snl:attr carrier;
+    }
+    snl:member ifla_mtu {
+      snl:attr mtu;
+    }
+    snl:member ifla_ifname {
+      snl:attr ifname;
+    }
+    snl:member ifla_address {
+      snl:attr address;
+    }
+    snl:member ifla_broadcast {
+      snl:attr broadcast;
+    }
+    snl:member ifla_ifalias {
+      snl:attr ifalias;
+    }
+    snl:member ifla_promiscuity {
+      snl:attr promiscuity;
+    }
+    snl:member ifla_num_vf {
+      snl:attr num-vf;
+    }
+    snl:member ifla_stats64 {
+      snl:attr stats64;
+    }
+    snl:member iflaf_orig_hwaddr {
+      snl:attr freebsd/orig-hwaddr;
+    }
+    snl:member iflaf_caps {
+      snl:attr freebsd/caps;
+    }
+    snl:member iflaf_groups {
+      snl:doc "Array of char[IFNAMSIZ]";
+      snl:attr freebsd/groups;
+      snl:use-parser _ifgroups_parser;
+    }
+    snl:member iflaf_vf_status {
+      snl:attr freebsd/vf-status;
+      snl:use-parser _vf_status_parser;
+      snl:present iflaf_vf_status.present;
+    }
+    snl:attr vf {
+      snl:store iflaf_vf_status.vfs;
+      snl:use-parser _vf_parser;
+    }
+  }
+
+  snl:parser snl_rtm_link_parser_simple {
+    snl:doc "RTM_<NEW|DEL|GET>LINK message parser, the bare minimum";
+    snl:struct snl_parsed_link_simple;
+    snl:grouping rtlink:link-message;
+    snl:member ifi_index {
+      snl:type uint32_t;
+      snl:field ifi-index;
+    }
+    snl:member ifla_mtu {
+      snl:attr mtu;
+    }
+    snl:member ifi_type {
+      snl:field ifi-type;
+    }
+    snl:member ifi_flags {
+      snl:field ifi-flags;
+    }
+    snl:member ifla_ifname {
+      snl:attr ifname;
+    }
+  }
+}

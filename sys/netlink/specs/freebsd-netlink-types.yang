@@ -1,0 +1,139 @@
+// SPDX-License-Identifier: BSD-2-Clause
+//
+// Copyright (c) 2026 Pouria Mousavizadeh Tehrani <pouria@FreeBSD.org>
+
+module freebsd-netlink-types {
+  yang-version 1.1;
+  namespace "urn:freebsd:yang:freebsd-netlink-types";
+  prefix nlt;
+
+  import freebsd-netlink-extensions {
+    prefix nlx;
+  }
+
+  organization
+    "FreeBSD";
+  contact
+    "Pouria Mousavizadeh Tehrani <pouria@FreeBSD.org>";
+  description
+    "The types shared by the descriptions of FreeBSD's netlink(4)
+     protocols: addresses as the attributes carry them, interface
+     names and indexes, address families and FIB numbers.";
+
+  revision 2026-10-14 {
+    description
+      "Initial revision, for FreeBSD 16.0-CURRENT (main at
+       84f790e5b6cc).";
+  }
+
+  typedef ip-address {
+    type binary {
+      length "4 | 16";
+    }
+    description
+      "An IPv4 or an IPv6 address in network byte order, the length
+       telling which.  An IPv6 link-local address carries no scope:
+       the interface index of the message gives it.  snl(3) reads
+       it into a struct sockaddr (snl_attr_get_ip()).";
+  }
+
+  typedef in-addr {
+    type binary {
+      length "4";
+    }
+    description
+      "An IPv4 address (struct in_addr).";
+  }
+
+  typedef in6-addr {
+    type binary {
+      length "16";
+    }
+    description
+      "An IPv6 address (struct in6_addr), without scope.";
+  }
+
+  typedef link-address {
+    type binary {
+      length "0..255";
+    }
+    description
+      "A link-level address: if_addrlen bytes, 6 for Ethernet.";
+  }
+
+  typedef ifname {
+    type string {
+      length "1..15";
+    }
+    description
+      "An interface name, at most IFNAMSIZ - 1 characters.";
+  }
+
+  typedef ifindex {
+    type uint32;
+    description
+      "An interface index, as if_nametoindex(3) gives it; 0 is
+       none.";
+  }
+
+  typedef fibnum {
+    type uint32;
+    description
+      "A routing table: a FIB number from 0 to net.fibs - 1, 0 being
+       the default one (RT_TABLE_MAIN); 0xffffffff (RT_TABLE_UNSPEC)
+       means every table where that is allowed.";
+  }
+
+  typedef address-family {
+    type enumeration {
+      enum unspec {
+        value 0;
+        description
+          "AF_UNSPEC.";
+      }
+      enum inet {
+        value 2;
+        description
+          "AF_INET: IPv4.";
+      }
+      enum link {
+        value 18;
+        description
+          "AF_LINK: link-level.";
+      }
+      enum inet6 {
+        value 28;
+        description
+          "AF_INET6: IPv6.";
+      }
+    }
+    nlx:width 8;
+    nlx:name-prefix "AF_";
+    description
+      "An address family, AF_* of <sys/socket.h>; one byte on the
+       wire, as in the fixed headers.";
+  }
+
+  typedef rtvia {
+    type binary {
+      length "5 | 17";
+    }
+    description
+      "A gateway of another address family than the destination's
+       (struct rtvia): one byte of address family (AF_INET or
+       AF_INET6) followed by the address.  snl(3) reads it into a
+       struct sockaddr (snl_attr_get_ipvia()).";
+  }
+
+  typedef time-t {
+    type int64;
+    description
+      "Seconds since the epoch, as a time_t.";
+  }
+
+  typedef seconds {
+    type uint32;
+    description
+      "A duration in seconds.";
+  }
+}

@@ -1,0 +1,217 @@
+// SPDX-License-Identifier: BSD-2-Clause
+//
+// Copyright (c) 2026 Pouria Mousavizadeh Tehrani <pouria@FreeBSD.org>
+
+module freebsd-netlink-snl {
+  yang-version 1.1;
+  namespace "urn:freebsd:yang:freebsd-netlink-snl";
+  prefix snl;
+
+  organization
+    "FreeBSD";
+  contact
+    "Pouria Mousavizadeh Tehrani <pouria@FreeBSD.org>";
+  description
+    "The statements of a binding module: what yanl reads to generate
+     snl(3) parsers (<netlink/netlink_snl.h>) from a netlink protocol
+     module.  A binding module imports the protocol modules it binds
+     and declares parsers with 'snl:parser'; each names the grouping
+     of the message or attribute set it parses, the output structure
+     and its members, and which attributes and header fields fill
+     them.
+
+     The generator emits, for every parser, the output structure,
+     the attribute table of each nest parsed in place and of the
+     parser itself, sorted by attribute value, the table of fixed
+     header fields, a post-parse callback checking required members
+     and filling the scope of link-local addresses, and the
+     SNL_DECLARE_*PARSER() declaration.  Each attribute in a table
+     gets a _Static_assert() comparing its value in the module to
+     the one in the uAPI header.";
+
+  revision 2026-10-14 {
+    description
+      "Initial revision.";
+  }
+
+  extension include {
+    argument header;
+    description
+      "At the top of a binding module: a header to include in the
+       generated file, beyond <netlink/netlink_snl.h> and those the
+       parsers need.";
+  }
+
+  extension code {
+    argument text;
+    description
+      "C code emitted verbatim: at the top of a binding module,
+       before its parsers; in a parser, after its structure and
+       before its tables.  The indentation it has in the module is
+       stripped.";
+  }
+
+  extension parser {
+    argument name;
+    description
+      "One struct snl_hdr_parser, by its C name; the names of its
+       tables and helpers derive from it.  Parsers are emitted in
+       order and may only use the parsers declared before them.";
+  }
+
+  extension doc {
+    argument text;
+    description
+      "A comment for the generated code of a parser or a member.";
+  }
+
+  extension grouping {
+    argument name;
+    description
+      "In a parser: the grouping of the protocol module it parses,
+       with its prefix.  A grouping with 'nlx:fixed-header' is a
+       message, parsed after its header; one without is an attribute
+       set, the contents of a nest or an array element.";
+  }
+
+  extension struct {
+    argument name;
+    description
+      "In a parser: the C name of the output structure to generate
+       from its members.";
+  }
+
+  extension out-size {
+    argument expression;
+    description
+      "In a parser without a structure: the size of its output, such
+       as 'sizeof(char[IFNAMSIZ])'.";
+  }
+
+  extension nest {
+    argument path;
+    description
+      "In a parser: the C name ('snl:name') of the parser of a nest
+       parsed in place, by its attribute path; the default is
+       _<parser>_<path>_parser.";
+  }
+
+  extension name {
+    argument name;
+    description
+      "In 'snl:nest': the C name of the nest's parser.";
+  }
+
+  extension member {
+    argument name;
+    description
+      "In a parser: a member of the output structure, in order.  It
+       takes its value from a header field ('snl:field'), from one
+       or more attributes ('snl:attr'), from both, or from nowhere.";
+  }
+
+  extension type {
+    argument ctype;
+    description
+      "In a member: its C type.  The default is the type the sources
+       of its value imply; it is mandatory when there is none or a
+       callback of its own is used.";
+  }
+
+  extension field {
+    argument leaf;
+    description
+      "In a member: the leaf of the fixed header to copy.";
+  }
+
+  extension attr {
+    argument path;
+    description
+      "In a member: an attribute stored in it, by its path in the
+       grouping, 'freebsd/caps' reaching into a nest parsed in place.
+       It may carry its own 'snl:cb', 'snl:arg', 'snl:arg-u32' and
+       'snl:use-parser'.  In a parser: an attribute parsed without a
+       member of its own, stored where 'snl:store' says.";
+  }
+
+  extension cb {
+    argument function;
+    description
+      "The attribute callback to use instead of the default one.";
+  }
+
+  extension arg {
+    argument expression;
+    description
+      "The C expression passed to the callback as its argument.";
+  }
+
+  extension arg-u32 {
+    argument expression;
+    description
+      "The C expression passed to the callback as a 32-bit integer
+       argument.";
+  }
+
+  extension use-parser {
+    argument name;
+    description
+      "The parser of the contents of a nest or of the elements of an
+       array.";
+  }
+
+  extension present {
+    argument member;
+    description
+      "The member, a bool or the presence mask, recording that the
+       attribute was received.";
+  }
+
+  extension presence-mask {
+    description
+      "In a member: it is a uint64_t with one bit per received
+       attribute, indexed by attribute value.";
+  }
+
+  extension tag {
+    argument member;
+    description
+      "In a member: the member set to 'snl:tag-value' when the
+       attribute is received.  Members sharing a tag are exclusive;
+       a second one fails the parser.";
+  }
+
+  extension tag-value {
+    argument expression;
+    description
+      "The value given to the tag member.";
+  }
+
+  extension required {
+    description
+      "In a member: fail the parser if the attribute is missing.
+       Needs a pointer type or 'snl:present'.";
+  }
+
+  extension scope-id {
+    argument member;
+    description
+      "In a member holding an address: the member holding the
+       interface index used to fill in the scope of a link-local
+       IPv6 address.";
+  }
+
+  extension store {
+    argument member;
+    description
+      "In a parser's 'snl:attr': the member, or member path, to
+       store the attribute in.";
+  }
+
+  extension post {
+    argument function;
+    description
+      "In a parser: a function of type snl_parse_post_f to finish
+       and validate the output.";
+  }
+}
