@@ -260,6 +260,8 @@ struct nhop_addrs {
 
 #define	NHG_C_TYPE_CNHOPS	0x1	/* Control plane nhops list */
 #define	NHG_C_TYPE_DNHOPS	0x2	/* Dataplane nhops list */
+#define	NHG_C_TYPE_CFAMILY	0x3	/* Control plane nhops families */
+#define	NHG_C_TYPE_DFAMILY	0x4	/* Dataplane nhops families */
 struct nhgrp_container {
 	uint32_t	nhgc_len;	/* container length */
 	uint16_t	nhgc_count;	/* number of items */
@@ -282,6 +284,20 @@ struct nhgrp_nhop_external {
  * - nhgrp_container (dataplane nhops list)
  *   - nhgrp_nhop_external
  *   - nhgrp_nhop_external
+ * - nhgrp_container (control plane nhops families)
+ *   - uint8_t
+ *   - uint8_t
+ *   ..
+ * - nhgrp_container (dataplane nhops families)
+ *   - uint8_t
+ *   - uint8_t
+ *
+ * Nexthop indexes are allocated per nexthop table, which is per fib and
+ * per neighbor family. The members of an IPv4 group can have IPv6
+ * gateways, so their nh_idx is from the IPv6 nexthop table. The family
+ * containers carry the neighbor family of each nexthop in the list with
+ * the same position. Their length is padded to a multiple of 8 bytes.
+ * Consumers should walk the containers by nhgc_len and skip unknown types.
  */
 struct nhgrp_external {
 	uint32_t	nhg_idx;	/* Nexthop group index */

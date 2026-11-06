@@ -65,10 +65,20 @@ struct nhop_map {
 	struct nhop_entry	*ptr;
 	size_t			size;
 };
+/* Nexthop tables of the dumped family and of the IPv6 gateways */
 static struct nhop_map global_nhop_map;
+static struct nhop_map nhop_map6;
+static int nhop_map_af;
+
+struct nhgrp_families {
+	const uint8_t	*cfamily;	/* control plane nhops families */
+	const uint8_t	*dfamily;	/* dataplane nhops families */
+};
 
 static struct ifmap_entry *ifmap;
 static size_t ifmap_size;
+
+static void prepare_nh_map(struct nhop_map *map, int fibnum, int af);
 
 static struct nhop_entry *
 nhop_get(struct nhop_map *map, uint32_t idx)
@@ -79,6 +89,104 @@ nhop_get(struct nhop_map *map, uint32_t idx)
 	if (*map->ptr[idx].ifname == '\0')
 		return (NULL);
 	return &map->ptr[idx];
+}
+
+/*
+ * Returns the control plane and dataplane nexthop lists of the group.
+ */
+static bool
+get_nhgrp_lists(struct nhgrp_external *nhge, struct nhgrp_container **nhg_cp,
+    struct nhgrp_container **nhg_dp)
+{
+
+	*nhg_cp = (struct nhgrp_container *)(nhge + 1);
+	if ((*nhg_cp)->nhgc_type != NHG_C_TYPE_CNHOPS ||
+	    (*nhg_cp)->nhgc_subtype != 0)
+		return (false);
+	*nhg_dp = (struct nhgrp_container *)((char *)*nhg_cp +
+	    (*nhg_cp)->nhgc_len);
+	if ((*nhg_dp)->nhgc_type != NHG_C_TYPE_DNHOPS ||
+	    (*nhg_dp)->nhgc_subtype != 0)
+		return (false);
+	return (true);
+}
+
+static struct nhop_map *
+nhop_map_family(int family)
+{
+
+	if (family == nhop_map_af)
+		return (&global_nhop_map);
+	if (family == AF_INET6)
+		return (&nhop_map6);
+	return (NULL);
+}
+
+/*
+ * Find the families of the nexthops of the group. A group of an IPv4
+ * route can have nexthops with IPv6 gateways, which are indexed in the
+ * IPv6 nexthop table. Kernels which don't report the families only have
+ * nexthops of the group's own family.
+ */
+static void
+get_nhgrp_families(struct rt_msghdr *rtm, struct nhgrp_container *nhg_cp,
+    struct nhgrp_container *nhg_dp, struct nhgrp_families *nf)
+{
+	struct nhgrp_container *nhgc;
+	char *lim;
+
+	nf->cfamily = NULL;
+	nf->dfamily = NULL;
+	lim = (char *)rtm + rtm->rtm_msglen;
+	nhgc = (struct nhgrp_container *)((char *)nhg_dp + nhg_dp->nhgc_len);
+	while ((char *)(nhgc + 1) <= lim && nhgc->nhgc_len >= sizeof(*nhgc) &&
+	    (char *)nhgc + nhgc->nhgc_len <= lim) {
+		if (nhgc->nhgc_subtype == 0 &&
+		    nhgc->nhgc_len >= sizeof(*nhgc) + nhgc->nhgc_count) {
+			if (nhgc->nhgc_type == NHG_C_TYPE_CFAMILY &&
+			    nhgc->nhgc_count == nhg_cp->nhgc_count)
+				nf->cfamily = (const uint8_t *)(nhgc + 1);
+			else if (nhgc->nhgc_type == NHG_C_TYPE_DFAMILY &&
+			    nhgc->nhgc_count == nhg_dp->nhgc_count)
+				nf->dfamily = (const uint8_t *)(nhgc + 1);
+		}
+		nhgc = (struct nhgrp_container *)((char *)nhgc +
+		    nhgc->nhgc_len);
+	}
+}
+
+static int
+nhgrp_cfamily(const struct nhgrp_families *nf, uint32_t i)
+{
+
+	return (nf->cfamily != NULL ? nf->cfamily[i] : nhop_map_af);
+}
+
+static int
+nhgrp_dfamily(const struct nhgrp_families *nf, uint32_t i)
+{
+
+	return (nf->dfamily != NULL ? nf->dfamily[i] : nhop_map_af);
+}
+
+/*
+ * Returns true if the group has nexthops from another family's table.
+ */
+static bool
+nhgrp_is_mixed(struct rt_msghdr *rtm)
+{
+	struct nhgrp_container *nhg_cp, *nhg_dp;
+	struct nhgrp_families nf;
+
+	if (!get_nhgrp_lists((struct nhgrp_external *)(rtm + 1), &nhg_cp,
+	    &nhg_dp))
+		return (false);
+	get_nhgrp_families(rtm, nhg_cp, nhg_dp, &nf);
+	for (uint32_t i = 0; i < nhg_cp->nhgc_count; i++) {
+		if (nhgrp_cfamily(&nf, i) != nhop_map_af)
+			return (true);
+	}
+	return (false);
 }
 
 static void
@@ -118,18 +226,17 @@ print_nhgroup_entry_sysctl(const char *name, struct rt_msghdr *rtm,
 {
 	char buffer[128];
 	struct nhop_entry *ne;
+	struct nhop_map *map;
 	struct nhgrp_nhop_external *ext_cp, *ext_dp;
 	struct nhgrp_container *nhg_cp, *nhg_dp;
+	struct nhgrp_families nf;
+	int family;
 
-	nhg_cp = (struct nhgrp_container *)(nhge + 1);
-	if (nhg_cp->nhgc_type != NHG_C_TYPE_CNHOPS || nhg_cp->nhgc_subtype != 0)
+	if (!get_nhgrp_lists(nhge, &nhg_cp, &nhg_dp))
 		return;
 	ext_cp = (struct nhgrp_nhop_external *)(nhg_cp + 1);
-
-	nhg_dp = (struct nhgrp_container *)((char *)nhg_cp + nhg_cp->nhgc_len);
-	if (nhg_dp->nhgc_type != NHG_C_TYPE_DNHOPS || nhg_dp->nhgc_subtype != 0)
-		return;
 	ext_dp = (struct nhgrp_nhop_external *)(nhg_dp + 1);
+	get_nhgrp_families(rtm, nhg_cp, nhg_dp, &nf);
 
 	xo_open_instance(name);
 
@@ -152,8 +259,10 @@ print_nhgroup_entry_sysctl(const char *name, struct rt_msghdr *rtm,
 	for (uint32_t i = 0; i < nhg_cp->nhgc_count; i++) {
 		/* TODO: optimize slots calculations */
 		uint32_t slots = 0;
+		family = nhgrp_cfamily(&nf, i);
 		for (uint32_t sidx = 0; sidx < nhg_dp->nhgc_count; sidx++) {
-			if (ext_dp[sidx].nh_idx == ext_cp[i].nh_idx)
+			if (ext_dp[sidx].nh_idx == ext_cp[i].nh_idx &&
+			    nhgrp_dfamily(&nf, sidx) == family)
 				slots++;
 		}
 		xo_open_instance("nhop-weight");
@@ -162,7 +271,12 @@ print_nhgroup_entry_sysctl(const char *name, struct rt_msghdr *rtm,
 		xo_emit("{t:nh-index/%*lu}", wid_nhidx, ext_cp[i].nh_idx);
 		xo_emit("{t:nh-weight/%*lu}", wid_nhidx, ext_cp[i].nh_weight);
 		xo_emit("{t:nh-slots/%*lu}", wid_nhidx, slots);
-		ne = nhop_get(&global_nhop_map, ext_cp[i].nh_idx);
+		if (family != nhop_map_af) {
+			xo_emit("{e:nh-family/%s}",
+			    family == AF_INET6 ? "inet6" : "unknown");
+		}
+		map = nhop_map_family(family);
+		ne = map != NULL ? nhop_get(map, ext_cp[i].nh_idx) : NULL;
 		if (ne != NULL) {
 			xo_emit("{t:nh-gw/%*.*s}", wid_gw, wid_gw, ne->gw);
 			xo_emit("{t:nh-interface/%*.*s}", wid_if, wid_if, ne->ifname);
@@ -259,6 +373,14 @@ print_nhgrp_sysctl(int fibnum, int af)
 	xo_open_list("rt-family");
 	if (nd.nh_count > 0) {
 		wid_gw = WID_GW_DEFAULT(af);
+		for (size_t i = 0; i < nd.nh_count; i++) {
+			if (nhgrp_is_mixed(nd.nh_map[i].rtm)) {
+				/* IPv4 groups with IPv6 gateways */
+				wid_gw = WID_GW_DEFAULT(AF_INET6);
+				prepare_nh_map(&nhop_map6, fibnum, AF_INET6);
+				break;
+			}
+		}
 		xo_open_instance("rt-family");
 		pr_family(af);
 		xo_open_list("nhgrp-entry");
@@ -277,7 +399,7 @@ print_nhgrp_sysctl(int fibnum, int af)
 }
 
 static void
-update_global_map(struct nhop_external *nh)
+update_global_map(struct nhop_map *map, struct nhop_external *nh)
 {
 	char iface_name[128];
 	char gw_addr[64];
@@ -302,11 +424,11 @@ update_global_map(struct nhop_external *nh)
 	} else
 		snprintf(gw_addr, sizeof(gw_addr), "%s/resolve", iface_name);
 
-	nhop_map_update(&global_nhop_map, nh->nh_idx, gw_addr, iface_name);
+	nhop_map_update(map, nh->nh_idx, gw_addr, iface_name);
 }
 
 static void
-prepare_nh_map(int fibnum, int af)
+prepare_nh_map(struct nhop_map *map, int fibnum, int af)
 {
 	struct nhops_dump nd;
 	struct nhop_external *nh;
@@ -317,7 +439,7 @@ prepare_nh_map(int fibnum, int af)
 	for (size_t i = 0; i < nd.nh_count; i++) {
 		rtm = nd.nh_map[i].rtm;
 		nh = (struct nhop_external *)(rtm + 1);
-		update_global_map(nh);
+		update_global_map(map, nh);
 	}
 
 	free(nd.nh_buf);
@@ -339,7 +461,8 @@ nhgrp_print(int fibnum, int af)
 		xo_errx(EX_USAGE, "%d: invalid fib", fibnum);
 
 	ifmap = prepare_ifmap(&ifmap_size);
-	prepare_nh_map(fibnum, af);
+	nhop_map_af = af;
+	prepare_nh_map(&global_nhop_map, fibnum, af);
 
 	xo_open_container("route-nhgrp-information");
 	xo_emit("{T:Nexthop groups data}");

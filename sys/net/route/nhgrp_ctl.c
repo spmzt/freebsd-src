@@ -1003,6 +1003,25 @@ nhgrp_print_buf(const struct nhgrp_object *nhg, char *buf, size_t bufsize)
 	return buf;
 }
 
+/*
+ * Length of the container with the families of @count nexthops.
+ * Keep the following data 64-bit aligned.
+ */
+#define	NHGRP_FAMILY_C_LEN(count)	\
+	(sizeof(struct nhgrp_container) + roundup2((count), sizeof(uint64_t)))
+
+static struct nhgrp_container *
+fill_family_container(struct nhgrp_container *nhgc, uint8_t type,
+    uint32_t count)
+{
+	nhgc->nhgc_type = type;
+	nhgc->nhgc_subtype = 0;
+	nhgc->nhgc_len = NHGRP_FAMILY_C_LEN(count);
+	nhgc->nhgc_count = count;
+
+	return (nhgc);
+}
+
 __noinline static int
 dump_nhgrp_entry(struct rib_head *rh, const struct nhgrp_priv *nhg_priv,
     char *buffer, size_t buffer_size, struct sysctl_req *w)
@@ -1012,6 +1031,7 @@ dump_nhgrp_entry(struct rib_head *rh, const struct nhgrp_priv *nhg_priv,
 	struct nhgrp_container *nhgc;
 	const struct nhgrp_object *nhg;
 	struct nhgrp_nhop_external *ext;
+	uint8_t *family;
 	int error;
 	size_t sz;
 
@@ -1024,6 +1044,9 @@ dump_nhgrp_entry(struct rib_head *rh, const struct nhgrp_priv *nhg_priv,
 	/* dataplane nexthops */
 	sz += sizeof(struct nhgrp_container);
 	sz += sizeof(struct nhgrp_nhop_external) * nhg->nhg_size;
+	/* families of the controlplane and dataplane nexthops */
+	sz += NHGRP_FAMILY_C_LEN(nhg_priv->nhg_nh_count);
+	sz += NHGRP_FAMILY_C_LEN(nhg->nhg_size);
 
 	KASSERT(sz <= buffer_size, ("increase nhgrp buffer size"));
 
@@ -1066,6 +1089,25 @@ dump_nhgrp_entry(struct rib_head *rh, const struct nhgrp_priv *nhg_priv,
 		ext[i].nh_idx = nhg->nhops[i]->nh_priv->nh_idx;
 		ext[i].nh_weight = 0;
 	}
+
+	/*
+	 * Fill in the nexthop families. Members with a gateway of another
+	 * family have their index in that family's nexthop table.
+	 */
+	nhgc = fill_family_container(
+	    (struct nhgrp_container *)(&ext[nhg->nhg_size]),
+	    NHG_C_TYPE_CFAMILY, nhg_priv->nhg_nh_count);
+	family = (uint8_t *)(nhgc + 1);
+	for (int i = 0; i < nhg_priv->nhg_nh_count; i++)
+		family[i] = nhop_get_neigh_family(
+		    nhg_priv->nhg_nh_weights[i].nh);
+
+	nhgc = fill_family_container(
+	    (struct nhgrp_container *)((char *)nhgc + nhgc->nhgc_len),
+	    NHG_C_TYPE_DFAMILY, nhg->nhg_size);
+	family = (uint8_t *)(nhgc + 1);
+	for (int i = 0; i < nhg->nhg_size; i++)
+		family[i] = nhop_get_neigh_family(nhg->nhops[i]);
 
 	error = SYSCTL_OUT(w, buffer, sz);
 
@@ -1178,6 +1220,7 @@ nhgrp_dump_sysctl(struct rib_head *rh, struct sysctl_req *w)
 	sz = sizeof(struct rt_msghdr) + sizeof(struct nhgrp_external);
 	sz += 2 * sizeof(struct nhgrp_container);
 	sz += 2 * sizeof(struct nhgrp_nhop_external) * RIB_MAX_MPATH_WIDTH;
+	sz += 2 * NHGRP_FAMILY_C_LEN(RIB_MAX_MPATH_WIDTH);
 	buffer = malloc(sz, M_TEMP, M_NOWAIT);
 	if (buffer == NULL)
 		return (ENOMEM);

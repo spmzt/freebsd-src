@@ -1,7 +1,10 @@
+import ctypes
 import socket
+import struct
 
 import pytest
 from atf_python.sys.net.rtsock import RtConst
+from atf_python.sys.net.rtsock import RtMsgHdr
 from atf_python.sys.net.rtsock import Rtsock
 from atf_python.sys.net.rtsock import RtsockRtMessage
 from atf_python.sys.net.tools import ToolsHelper
@@ -190,6 +193,94 @@ class TestRtmMultipath(SingleVnetTestTemplate):
 
         routes = self.get_prefix_routes()
         assert [r["gateway"] for r in routes] == [gw6]
+
+    @staticmethod
+    def _dump_nhgrps(family: int):
+        """Returns the nexthop groups of fib 0 as
+        {group index: [(nexthop family, nexthop index, weight)]}"""
+        NHG_C_TYPE_CNHOPS = 1
+        NHG_C_TYPE_CFAMILY = 3
+        CTL_NET = 4
+        NET_RT_NHGRP = 7
+        libc = ctypes.CDLL(None, use_errno=True)
+        mib = (ctypes.c_int * 7)(
+            CTL_NET, socket.AF_ROUTE, 0, family, NET_RT_NHGRP, 0, 0
+        )
+        size = ctypes.c_size_t(0)
+        assert libc.sysctl(mib, 7, None, ctypes.byref(size), None, 0) == 0
+        buf = ctypes.create_string_buffer(size.value)
+        assert libc.sysctl(mib, 7, buf, ctypes.byref(size), None, 0) == 0
+        data = buf.raw[: size.value]
+
+        groups = {}
+        off = 0
+        while off < len(data):
+            msglen = struct.unpack_from("H", data, off)[0]
+            nhg_idx = struct.unpack_from("I", data, off + ctypes.sizeof(RtMsgHdr))[0]
+            # walk the containers after nhgrp_external
+            c_off = off + ctypes.sizeof(RtMsgHdr) + 8
+            nhops, families = None, None
+            while c_off < off + msglen:
+                c_len, c_count, c_type, c_subtype = struct.unpack_from(
+                    "IHBB", data, c_off
+                )
+                if c_type == NHG_C_TYPE_CNHOPS:
+                    nhops = [
+                        struct.unpack_from("II", data, c_off + 8 + 8 * i)
+                        for i in range(c_count)
+                    ]
+                elif c_type == NHG_C_TYPE_CFAMILY:
+                    families = list(data[c_off + 8 : c_off + 8 + c_count])
+                    assert c_len % 8 == 0
+                c_off += c_len
+            assert c_off == off + msglen
+            assert families is not None and len(families) == len(nhops)
+            groups[nhg_idx] = [(f, idx, w) for f, (idx, w) in zip(families, nhops)]
+            off += msglen
+        return groups
+
+    @pytest.mark.require_user("root")
+    def test_rtm_multipath4_mixed_nhgrp_dump(self):
+        """Tests the nexthop families in the nexthop group sysctl
+
+        Gateways of different families can have nexthops with the same index,
+        as they are indexed in different nexthop tables.
+        """
+        msg = self.rtsock.new_rtm_add(self.PREFIX, "2001:db8::10")
+        msg.rtm_flags = RtConst.RTF_GATEWAY
+        msg.rtm_inits |= RtConst.RTV_WEIGHT
+        msg.rtm_rmx.rmx_weight = 5
+        self.rtsock.write_message(msg)
+        msg_in = RtsockRtMessage.from_bytes(self.rtsock.read_data(msg.rtm_seq))
+        assert msg_in.rtm_errno == 0
+        idx6 = msg_in.rtm_rmx.rmx_nhidx
+
+        # Get an IPv4 nexthop with the same index, if possible
+        for i in range(20, 60):
+            gw4 = "192.0.2.{}".format(i)
+            idx4 = self._add_route("128.66.{}.0/24".format(i), gw4)
+            if idx4 >= idx6:
+                break
+        msg = self.rtsock.new_rtm_add(self.PREFIX, gw4)
+        msg.rtm_flags = RtConst.RTF_GATEWAY
+        msg.rtm_inits |= RtConst.RTV_WEIGHT
+        msg.rtm_rmx.rmx_weight = 3
+        self.rtsock.write_message(msg)
+        msg_in = RtsockRtMessage.from_bytes(self.rtsock.read_data(msg.rtm_seq))
+        assert msg_in.rtm_errno == 0
+
+        expected = sorted([(socket.AF_INET, idx4, 3), (socket.AF_INET6, idx6, 5)])
+        groups = self._dump_nhgrps(socket.AF_INET)
+        print("idx4 {} idx6 {} groups {}".format(idx4, idx6, groups))
+        assert expected in [sorted(m) for m in groups.values()]
+
+        # IPv6 groups only have IPv6 nexthops
+        for gw in ["2001:db8::20", "2001:db8::21"]:
+            self._add_route("2001:db8:1::/64", gw)
+        groups6 = self._dump_nhgrps(socket.AF_INET6)
+        assert len(groups6) == 1
+        for members in groups6.values():
+            assert [m[0] for m in members] == [socket.AF_INET6] * 2
 
     def _test_rtm_multipath(self, gws, gw_prefix: str):
         desired_map = {}
