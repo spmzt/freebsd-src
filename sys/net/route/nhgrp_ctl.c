@@ -99,6 +99,23 @@ wn_cmp_idx(const void *a, const void *b)
 }
 
 /*
+ * Order of the nexthops in a group: by neighbor family, then by index.
+ * Nexthops with a gateway of another family (IPv4 over IPv6) are indexed
+ * in that family's nexthop table, so the index alone is not unique.
+ */
+int
+nhgrp_wn_cmp(const struct weightened_nhop *w_a,
+    const struct weightened_nhop *w_b)
+{
+	uint8_t a_family = w_a->nh->nh_priv->nh_neigh_family;
+	uint8_t b_family = w_b->nh->nh_priv->nh_neigh_family;
+
+	if (a_family != b_family)
+		return (a_family < b_family ? -1 : 1);
+	return (nhgrp_wn_cmp(w_a, w_b));
+}
+
+/*
  * Perform in-place sorting for array of nexthops in @wn.
  * Sort by nexthop index ascending.
  */
@@ -534,18 +551,24 @@ nhgrp_alloc(uint32_t fibnum, int family, struct weightened_nhop *wn, int num_nho
 
 	/* Sort nexthops & check there are no duplicates */
 	sort_weightened_nhops(wn, num_nhops);
-	uint32_t last_id = 0;
 	uint32_t min_metric = nhop_get_metric(wn[0].nh);
 	for (int i = 0; i < num_nhops; i++) {
-		if (wn[i].nh->nh_priv->nh_control != ctl) {
+		const struct nhop_priv *nh_priv = wn[i].nh->nh_priv;
+
+		/*
+		 * A nexthop with a gateway of another family is linked to
+		 * that family's nh_control, so check the fib and the
+		 * lookup family instead.
+		 */
+		if (nh_priv->nh_fibnum != fibnum ||
+		    nh_priv->nh_upper_family != family) {
 			*perror = EINVAL;
 			return (NULL);
 		}
-		if (wn[i].nh->nh_priv->nh_idx == last_id) {
+		if (i > 0 && wn[i].nh == wn[i - 1].nh) {
 			*perror = EEXIST;
 			return (NULL);
 		}
-		last_id = wn[i].nh->nh_priv->nh_idx;
 
 		if (nhop_get_metric(wn[i].nh) < min_metric)
 			min_metric = nhop_get_metric(wn[i].nh);
@@ -1062,11 +1085,10 @@ nhgrp_get_idx(const struct nhgrp_object *nhg)
  * Returns the address family of the nexthop index space @nhg was
  * allocated from.
  *
- * XXX: we get group indexes from the nh_control, which is keyed by
- * the neighbor family of its members. For now, all members are required
- * to share that nh_control. The ideal is to support nexthop groups spanning
- * multiple address families. Such a group will no longer belong to a
- * single neighbor family.
+ * Groups get their index from the nh_control of the rib they are
+ * allocated in. Their members can come from another family's nh_control
+ * (IPv4 routes with IPv6 gateways), so this is the index space of the
+ * group, not of its members.
  */
 uint8_t
 nhgrp_get_neigh_family(const struct nhgrp_object *nhg)

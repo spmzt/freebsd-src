@@ -314,6 +314,8 @@ void nhgrp_recompile(struct rib_head *rh);
 
 void nhgrp_ref_object(struct nhgrp_object *nhg);
 uint32_t nhgrp_get_idx(const struct nhgrp_object *nhg);
+int nhgrp_wn_cmp(const struct weightened_nhop *w_a,
+    const struct weightened_nhop *w_b);
 void nhgrp_free(struct nhgrp_object *nhg);
 
 /* rtsock */
