@@ -3024,6 +3024,8 @@ bridge_input(struct ifnet *ifp, struct mbuf *m)
 			}						\
 		}							\
 		m->m_pkthdr.rcvif = iface;				\
+		if (!V_member_ifaddrs)					\
+			M_SETFIB(m, (iface)->if_fib);			\
 		if ((iface) == ifp) {					\
 			/* Skip bridge processing... src == dest */	\
 			return (m);					\
