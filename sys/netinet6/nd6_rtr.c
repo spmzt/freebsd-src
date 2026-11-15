@@ -2610,9 +2610,10 @@ in6_tmpifadd(const struct in6_ifaddr *ia0, int forcegen, int delay)
 }
 
 static int
-rt6_deleteroute(const struct rtentry *rt, const struct nhop_object *nh,
+rt6_deleteroute(const struct rtentry *rt, const struct weightened_nhop *wn,
     void *arg)
 {
+	const struct nhop_object *nh = wn->nh;
 	struct in6_addr *gate = (struct in6_addr *)arg;
 	int nh_rt_flags;
 

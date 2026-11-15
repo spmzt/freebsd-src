@@ -114,10 +114,10 @@ get_rtmsg_type_from_rtsock(int cmd)
  *
  */
 
-static struct nhop_object *
-rc_get_nhop(const struct rib_cmd_info *rc)
+static const struct route_nhop_data *
+rc_get_rnd(const struct rib_cmd_info *rc)
 {
-	return ((rc->rc_cmd == RTM_DELETE) ? rc->rc_nh_old : rc->rc_nh_new);
+	return ((rc->rc_cmd == RTM_DELETE) ? &rc->rc_old : &rc->rc_new);
 }
 
 static void
@@ -253,15 +253,16 @@ dump_rc_nhg(struct nl_writer *nw, const struct route_nhop_data *rnd, struct rtms
 			nlattr_add_u32(nw, NL_RTA_RTFLAGS, rtflags);
 		if (rtflags & RTF_FIXEDMTU)
 			dump_rc_nhop_mtu(nw, wn[i].nh);
-		nlattr_add_u32(nw, NL_RTA_PRIORITY, nhop_get_metric(wn[i].nh));
+		nlattr_add_u32(nw, NL_RTA_PRIORITY, wn[i].metric);
 		nh_expire = nhop_get_expire(wn[i].nh);
 		if (nh_expire > 0)
 			nlattr_add_u32(nw, NL_RTA_EXPIRES, nh_expire - time_uptime);
 		rtnh = nlattr_restore_offset(nw, nh_off, struct rtnexthop);
 
-		if (nh == wn[i].nh) {
+		/* The datapath only uses the paths with the lowest metric */
+		if (nh == wn[i].nh && wn[i].metric == wn[0].metric) {
 			nhop_weight = wn[i].weight;
-			nhop_metric = nhop_get_metric(wn[i].nh);
+			nhop_metric = wn[i].metric;
 		}
 		/*
 		 * nlattr_add() allocates 4-byte aligned storage, no need to aligh
@@ -314,7 +315,7 @@ dump_rc_nhop(struct nl_writer *nw, const struct route_nhop_data *rnd, struct rtm
 	/* In any case, fill outgoing interface */
 	nlattr_add_u32(nw, NL_RTA_OIF, if_getindex(nh->nh_ifp));
 
-	nlattr_add_u32(nw, NL_RTA_PRIORITY, nhop_get_metric(nh));
+	nlattr_add_u32(nw, NL_RTA_PRIORITY, rnd->rnd_metric);
 	if (rnd->rnd_weight != RT_DEFAULT_WEIGHT)
 		nlattr_add_u32(nw, NL_RTA_WEIGHT, rnd->rnd_weight);
 }
@@ -418,10 +419,7 @@ report_operation(uint32_t fibnum, struct rib_cmd_info *rc,
 
 	if (nl_writer_group(&nw, NLMSG_SMALL, NETLINK_ROUTE, group_id, 0,
 	    false)) {
-		struct route_nhop_data rnd = {
-			.rnd_nhop = rc_get_nhop(rc),
-			.rnd_weight = rc->rc_nh_weight,
-		};
+		struct route_nhop_data rnd = *rc_get_rnd(rc);
 		hdr->nlmsg_flags &= ~(NLM_F_REPLACE | NLM_F_CREATE);
 		hdr->nlmsg_flags &= ~(NLM_F_EXCL | NLM_F_APPEND);
 		switch (rc->rc_cmd) {
@@ -915,7 +913,6 @@ create_nexthop_one(struct nl_parsed_route *attrs, struct rta_mpath_nh *mpnh,
 	}
 	nhop_set_pxtype_flag(nh, get_pxflag(attrs));
 	nhop_set_rtflags(nh, attrs->rta_rtflags);
-	nhop_set_metric(nh, attrs->rta_metric);
 	if (attrs->rtm_protocol > RTPROT_STATIC)
 		nhop_set_origin(nh, attrs->rtm_protocol);
 
@@ -951,6 +948,7 @@ create_nexthop_from_attrs(struct nl_parsed_route *attrs,
 				break;
 			}
 			wn[i].weight = mpnh->rtnh_weight > 0 ? mpnh->rtnh_weight : 1;
+			wn[i].metric = attrs->rta_metric;
 		}
 		if (error == 0) {
 			struct rib_head *rh = nhop_get_rh(wn[0].nh);
@@ -1002,7 +1000,6 @@ create_nexthop_from_attrs(struct nl_parsed_route *attrs,
 			nhop_set_broadcast(nh, true);
 		if (attrs->rtm_protocol > RTPROT_STATIC)
 			nhop_set_origin(nh, attrs->rtm_protocol);
-		nhop_set_metric(nh, attrs->rta_metric);
 		nhop_set_pxtype_flag(nh, get_pxflag(attrs));
 		nhop_set_rtflags(nh, attrs->rta_rtflags);
 
@@ -1075,7 +1072,11 @@ rtnl_handle_newroute(struct nlmsghdr *hdr, struct nlpcb *nlp,
 
 	if (!NH_IS_NHGRP(nh) && attrs.rta_weight == 0)
 		attrs.rta_weight = RT_DEFAULT_WEIGHT;
-	struct route_nhop_data rnd = { .rnd_nhop = nh, .rnd_weight = attrs.rta_weight };
+	struct route_nhop_data rnd = {
+		.rnd_nhop = nh,
+		.rnd_weight = attrs.rta_weight,
+		.rnd_metric = attrs.rta_metric,
+	};
 	int op_flags = get_op_flags(hdr->nlmsg_flags);
 
 	error = rib_add_route_px(attrs.rta_table, attrs.rta_dst, attrs.rtm_dst_len,
@@ -1086,17 +1087,18 @@ rtnl_handle_newroute(struct nlmsghdr *hdr, struct nlpcb *nlp,
 }
 
 static int
-path_match_func(const struct rtentry *rt, const struct nhop_object *nh, void *_data)
+path_match_func(const struct rtentry *rt, const struct weightened_nhop *wn,
+    void *_data)
 {
 	struct nl_parsed_route *attrs = (struct nl_parsed_route *)_data;
 
-	if (attrs->rta_metric != 0 && attrs->rta_metric != nhop_get_metric(nh))
+	if (attrs->rta_metric != 0 && attrs->rta_metric != wn->metric)
 		return (0);
 
-	if ((attrs->rta_gw != NULL) && !rib_match_gw(rt, nh, attrs->rta_gw))
+	if ((attrs->rta_gw != NULL) && !rib_match_gw(rt, wn, attrs->rta_gw))
 		return (0);
 
-	if ((attrs->rta_oif != NULL) && (attrs->rta_oif != nh->nh_ifp))
+	if ((attrs->rta_oif != NULL) && (attrs->rta_oif != wn->nh->nh_ifp))
 		return (0);
 
 	return (1);
@@ -1193,10 +1195,7 @@ rtnl_handle_route_event(uint32_t fibnum, const struct rib_cmd_info *rc)
 		.nlmsg_type = get_rtmsg_type_from_rtsock(rc->rc_cmd),
 	};
 
-	struct route_nhop_data rnd = {
-		.rnd_nhop = rc_get_nhop(rc),
-		.rnd_weight = rc->rc_nh_weight,
-	};
+	struct route_nhop_data rnd = *rc_get_rnd(rc);
 
 	uint32_t group_id = family_to_group(family);
 	if (!nl_writer_group(&nw, NLMSG_SMALL, NETLINK_ROUTE, group_id, 0,

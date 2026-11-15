@@ -81,7 +81,6 @@ struct nhop_priv {
 	/* nhop lookup comparison end */
 	uint32_t		nh_idx;		/* nexthop index */
 	uint32_t		nh_fibnum;	/* nexthop fib */
-	uint32_t		nh_metric;	/* nexthop metric */
 	void			*cb_func;	/* function handling additional rewrite caps */
 	u_int			nh_refcnt;	/* number of references, refcount(9)  */
 	u_int			nh_linked;	/* refcount(9), == 2 if linked to the list */

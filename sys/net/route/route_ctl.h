@@ -35,22 +35,44 @@
 
 struct rib_head *rt_tables_get_rnh_safe(uint32_t table, sa_family_t family);
 
-struct rib_cmd_info {
-	uint8_t			rc_cmd;		/* RTM_ADD|RTM_DEL|RTM_CHANGE */
-	uint8_t			spare[3];
-	uint32_t		rc_nh_weight;	/* new nhop weight */
-	struct rtentry		*rc_rt;		/* Target entry */
-	struct nhop_object	*rc_nh_old;	/* Target nhop OR mpath */
-	struct nhop_object	*rc_nh_new;	/* Target nhop OR mpath */
+/*
+ * A path of a route: the nexthop, its weight among the paths with the
+ * same metric, and the metric. Only the paths with the lowest metric
+ * carry traffic.
+ */
+struct weightened_nhop {
+	struct nhop_object	*nh;
+	uint32_t		weight;
+	uint32_t		metric;
 };
 
+/*
+ * Nexthop data of a route: a single path or a nexthop group.
+ * @rnd_path is the single path the way nexthop groups store theirs.
+ */
 struct route_nhop_data {
 	union {
-		struct nhop_object *rnd_nhop;
-		struct nhgrp_object *rnd_nhgrp;
+		struct {
+			union {
+				struct nhop_object *rnd_nhop;
+				struct nhgrp_object *rnd_nhgrp;
+			};
+			uint32_t rnd_weight;
+			uint32_t rnd_metric;
+		};
+		struct weightened_nhop rnd_path;
 	};
-	uint32_t rnd_weight;
 };
+
+struct rib_cmd_info {
+	uint8_t			rc_cmd;		/* RTM_ADD|RTM_DEL|RTM_CHANGE */
+	uint8_t			spare[7];
+	struct rtentry		*rc_rt;		/* Target entry */
+	struct route_nhop_data	rc_old;		/* Old nhop OR mpath */
+	struct route_nhop_data	rc_new;		/* New nhop OR mpath */
+};
+#define	rc_nh_old	rc_old.rnd_nhop
+#define	rc_nh_new	rc_new.rnd_nhop
 
 int rib_add_route_px(uint32_t fibnum, struct sockaddr *dst, int plen,
     struct route_nhop_data *rnd, int op_flags, struct rib_cmd_info *rc);
@@ -75,7 +97,7 @@ int rib_change_route(uint32_t fibnum, struct rt_addrinfo *info,
   struct rib_cmd_info *rc);
 int rib_action(uint32_t fibnum, int action, struct rt_addrinfo *info,
   struct rib_cmd_info *rc);
-int rib_match_gw(const struct rtentry *rt, const struct nhop_object *nh,
+int rib_match_gw(const struct rtentry *rt, const struct weightened_nhop *wn,
     void *_data);
 int rib_handle_ifaddr_info(uint32_t fibnum, int cmd, struct rt_addrinfo *info);
 
@@ -172,8 +194,6 @@ struct nhop_object *nhops_iter_next(struct nhop_iter *iter);
 void nhops_iter_stop(struct nhop_iter *iter);
 
 /* Multipath */
-struct weightened_nhop;
-
 const struct weightened_nhop *nhgrp_get_nhops(const struct nhgrp_object *nhg,
     uint32_t *pnum_nhops);
 uint32_t nhgrp_get_count(struct rib_head *rh);

@@ -149,15 +149,15 @@ struct in_ifadown_arg {
 };
 
 static int
-in_ifadownkill(const struct rtentry *rt, const struct nhop_object *nh,
+in_ifadownkill(const struct rtentry *rt, const struct weightened_nhop *wn,
     void *xap)
 {
 	struct in_ifadown_arg *ap = xap;
 
-	if (nh->nh_ifa != ap->ifa)
+	if (wn->nh->nh_ifa != ap->ifa)
 		return (0);
 
-	if ((nhop_get_rtflags(nh) & RTF_STATIC) != 0 && ap->del == 0)
+	if ((nhop_get_rtflags(wn->nh) & RTF_STATIC) != 0 && ap->del == 0)
 		return (0);
 
 	return (1);

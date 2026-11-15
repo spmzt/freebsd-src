@@ -81,8 +81,8 @@ SYSCTL_VNET_PCPUSTAT(_net_route, OID_AUTO, stats, struct rtstat,
 
 EVENTHANDLER_LIST_DEFINE(rt_addrmsg);
 
-static int rt_ifdelroute(const struct rtentry *rt, const struct nhop_object *,
-    void *arg);
+static int rt_ifdelroute(const struct rtentry *rt,
+    const struct weightened_nhop *wn, void *arg);
 
 /*
  * route initialization must occur before ip6_init2(), which happenas at
@@ -334,11 +334,12 @@ ifa_ifwithroute(int flags, const struct sockaddr *dst,
  *	errno	failed - reason indicated
  */
 static int
-rt_ifdelroute(const struct rtentry *rt, const struct nhop_object *nh, void *arg)
+rt_ifdelroute(const struct rtentry *rt, const struct weightened_nhop *wn,
+    void *arg)
 {
 	struct ifnet	*ifp = arg;
 
-	if (nh->nh_ifp != ifp)
+	if (wn->nh->nh_ifp != ifp)
 		return (0);
 
 	/*

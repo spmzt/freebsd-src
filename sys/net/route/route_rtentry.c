@@ -192,6 +192,7 @@ rt_get_rnd(const struct rtentry *rt, struct route_nhop_data *rnd)
 {
 	rnd->rnd_nhop = rt->rt_nhop;
 	rnd->rnd_weight = rt->rt_weight;
+	rnd->rnd_metric = rt->rt_metric;
 }
 
 /*

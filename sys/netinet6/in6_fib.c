@@ -317,6 +317,7 @@ fib6_lookup_rt(uint32_t fibnum, const struct in6_addr *dst6,
 		rt = (struct rtentry *)rn;
 		rnd->rnd_nhop = rt->rt_nhop;
 		rnd->rnd_weight = rt->rt_weight;
+		rnd->rnd_metric = rt->rt_metric;
 	}
 	if (!(flags & NHR_UNLOCKED))
 		RIB_RUNLOCK(rh);

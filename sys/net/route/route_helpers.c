@@ -260,8 +260,7 @@ static void
 notify_add(struct rib_cmd_info *rc, const struct weightened_nhop *wn_src,
     route_notification_t *cb, void *cbdata)
 {
-	rc->rc_nh_new = wn_src->nh;
-	rc->rc_nh_weight = wn_src->weight;
+	rc->rc_new.rnd_path = *wn_src;
 
 	IF_DEBUG_LEVEL(LOG_DEBUG2) {
 		char nhbuf[NHOP_PRINT_BUFSIZE] __unused;
@@ -276,8 +275,7 @@ static void
 notify_del(struct rib_cmd_info *rc, const struct weightened_nhop *wn_src,
     route_notification_t *cb, void *cbdata)
 {
-	rc->rc_nh_old = wn_src->nh;
-	rc->rc_nh_weight = wn_src->weight;
+	rc->rc_old.rnd_path = *wn_src;
 
 	IF_DEBUG_LEVEL(LOG_DEBUG2) {
 		char nhbuf[NHOP_PRINT_BUFSIZE] __unused;
@@ -294,7 +292,6 @@ decompose_change_notification(const struct rib_cmd_info *rc, route_notification_
 {
 	uint32_t num_old, num_new;
 	const struct weightened_nhop *wn_old, *wn_new;
-	struct weightened_nhop tmp = { NULL, 0 };
 	uint32_t idx_old = 0, idx_new = 0;
 
 	struct rib_cmd_info rc_del = { .rc_cmd = RTM_DELETE, .rc_rt = rc->rc_rt };
@@ -303,17 +300,13 @@ decompose_change_notification(const struct rib_cmd_info *rc, route_notification_
 	if (NH_IS_NHGRP(rc->rc_nh_old)) {
 		wn_old = nhgrp_get_nhops((struct nhgrp_object *)rc->rc_nh_old, &num_old);
 	} else {
-		tmp.nh = rc->rc_nh_old;
-		tmp.weight = rc->rc_nh_weight;
-		wn_old = &tmp;
+		wn_old = &rc->rc_old.rnd_path;
 		num_old = 1;
 	}
 	if (NH_IS_NHGRP(rc->rc_nh_new)) {
 		wn_new = nhgrp_get_nhops((struct nhgrp_object *)rc->rc_nh_new, &num_new);
 	} else {
-		tmp.nh = rc->rc_nh_new;
-		tmp.weight = rc->rc_nh_weight;
-		wn_new = &tmp;
+		wn_new = &rc->rc_new.rnd_path;
 		num_new = 1;
 	}
 	IF_DEBUG_LEVEL(LOG_DEBUG) {
@@ -458,7 +451,6 @@ rib_add_default_route(uint32_t fibnum, int family, struct ifnet *ifp,
 	nhop_set_transmit_ifp(nh, ifp);
 	nhop_set_src(nh, ifa);
 	nhop_set_pxtype_flag(nh, NHF_DEFAULT);
-	nhop_set_metric(nh, RT_DEFAULT_METRIC);
 	rnd.rnd_nhop = nhop_get_nhop(nh, &error);
 
 	if (error == 0)

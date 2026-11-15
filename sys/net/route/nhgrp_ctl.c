@@ -82,7 +82,7 @@ static void destroy_nhgrp_epoch(epoch_context_t ctx);
 static void free_nhgrp_nhops(struct nhgrp_priv *nhg_priv);
 
 /*
- * Compares the position of two nexthops in a group: nexthops are ordered
+ * Compares the position of two paths in a group: paths are ordered
  * by metric first and by nexthop index second.
  */
 int
@@ -90,13 +90,11 @@ nhgrp_cmp_wn(const void *a, const void *b)
 {
 	const struct weightened_nhop *w_a = a;
 	const struct weightened_nhop *w_b = b;
-	uint32_t a_metric = w_a->nh->nh_priv->nh_metric;
-	uint32_t b_metric = w_b->nh->nh_priv->nh_metric;
 	uint32_t a_idx = w_a->nh->nh_priv->nh_idx;
 	uint32_t b_idx = w_b->nh->nh_priv->nh_idx;
 
-	if (a_metric != b_metric)
-		return (a_metric < b_metric ? -1 : 1);
+	if (w_a->metric != w_b->metric)
+		return (w_a->metric < w_b->metric ? -1 : 1);
 	if (a_idx < b_idx)
 		return (-1);
 	else if (a_idx > b_idx)
@@ -453,8 +451,8 @@ free_nhgrp_nhops(struct nhgrp_priv *nhg_priv)
 }
 
 /*
- * Allocate nexthop group of size @num_nhops with nexthops specified by
- * @wn. Nexthops have to be unique and match the fibnum/family of the group.
+ * Allocate nexthop group of size @num_nhops with paths specified by
+ * @wn. Paths have to be unique and match the fibnum/family of the group.
  * Returns unlinked nhgrp object on success or NULL and non-zero perror.
  */
 struct nhgrp_object *
@@ -493,22 +491,26 @@ nhgrp_alloc(uint32_t fibnum, int family, struct weightened_nhop *wn, int num_nho
 		}
 	}
 
-	/* Sort nexthops & check there are no duplicates */
+	/* A path without a metric gets the default one */
+	for (int i = 0; i < num_nhops; i++) {
+		if (wn[i].metric == RT_WILDCARD_METRIC)
+			wn[i].metric = RT_DEFAULT_METRIC;
+	}
+
+	/*
+	 * Sort paths & check there are no duplicates: a nexthop can
+	 * only be used once per metric.
+	 */
 	sort_weightened_nhops(wn, num_nhops);
-	uint32_t last_id = 0;
 	for (int i = 0; i < num_nhops; i++) {
 		if (wn[i].nh->nh_priv->nh_control != ctl) {
 			*perror = EINVAL;
 			return (NULL);
 		}
-		if (wn[i].nh->nh_priv->nh_idx == last_id) {
+		if (i > 0 && nhgrp_cmp_wn(&wn[i - 1], &wn[i]) == 0) {
 			*perror = EEXIST;
 			return (NULL);
 		}
-		last_id = wn[i].nh->nh_priv->nh_idx;
-
-		/* Cache the metric, the group is compiled from this array */
-		wn[i].metric = nhop_get_metric(wn[i].nh);
 	}
 
 	if ((nhg_priv = alloc_nhgrp(wn, num_nhops)) == NULL) {
@@ -756,25 +758,21 @@ nhgrp_get_filtered_group(struct rib_head *rh, const struct rtentry *rt,
 	error = 0;
 	num_nhops = 0;
 	for (i = 0; i < src_priv->nhg_nh_count; i++) {
-		if (flt_func(rt, src_priv->nhg_nh_weights[i].nh, flt_data))
+		if (flt_func(rt, &src_priv->nhg_nh_weights[i], flt_data))
 			continue;
 		memcpy(&pnhops[num_nhops++], &src_priv->nhg_nh_weights[i],
 		  sizeof(struct weightened_nhop));
 	}
 
-	if (num_nhops == 0) {
-		rnd->rnd_nhgrp = NULL;
-		rnd->rnd_weight = 0;
-	} else if (num_nhops == 1) {
-		rnd->rnd_nhop = pnhops[0].nh;
-		rnd->rnd_weight = pnhops[0].weight;
+	bzero(rnd, sizeof(*rnd));
+	if (num_nhops == 1) {
+		rnd->rnd_path = pnhops[0];
 		if (nhop_try_ref_object(rnd->rnd_nhop) == 0)
 			error = EAGAIN;
-	} else {
+	} else if (num_nhops > 1) {
 		mp_priv = get_nhgrp(ctl, pnhops, num_nhops, 0, &error);
 		if (mp_priv != NULL)
 			rnd->rnd_nhgrp = mp_priv->nhg;
-		rnd->rnd_weight = 0;
 	}
 
 	if (pnhops != (struct weightened_nhop *)&storage[0])
@@ -807,13 +805,11 @@ nhgrp_get_addition_group(struct rib_head *rh, struct route_nhop_data *rnd_orig,
 		return (0);
 	}
 
-	wn[0].nh = rnd_add->rnd_nhop;
-	wn[0].weight = rnd_add->rnd_weight;
+	wn[0] = rnd_add->rnd_path;
 
 	if (!NH_IS_NHGRP(rnd_orig->rnd_nhop)) {
 		/* Simple merge of 2 non-multipath nexthops */
-		wn[1].nh = rnd_orig->rnd_nhop;
-		wn[1].weight = rnd_orig->rnd_weight;
+		wn[1] = rnd_orig->rnd_path;
 		nhg_priv = get_nhgrp(ctl, wn, 2, 0, &error);
 	} else {
 		/* Get new nhop group with @rt->rt_nhop as an additional nhop */
@@ -823,8 +819,8 @@ nhgrp_get_addition_group(struct rib_head *rh, struct route_nhop_data *rnd_orig,
 
 	if (nhg_priv == NULL)
 		return (error);
+	bzero(rnd_new, sizeof(*rnd_new));
 	rnd_new->rnd_nhgrp = nhg_priv->nhg;
-	rnd_new->rnd_weight = 0;
 
 	return (0);
 }
@@ -850,8 +846,7 @@ nhgrp_get_merge_group(struct rib_head *rh, struct route_nhop_data *rnd_orig,
 		return (EINVAL);
 
 	if (!NH_IS_NHGRP(rnd_orig->rnd_nhop)) {
-		wn.nh = rnd_orig->rnd_nhop;
-		wn.weight = rnd_orig->rnd_weight;
+		wn = rnd_orig->rnd_path;
 		/* Get new nhop group with addition of nhops in nhgrp */
 		nhg_priv = append_nhops(ctl, rnd_add->rnd_nhgrp, &wn, 1,
 		    &error);
@@ -863,8 +858,8 @@ nhgrp_get_merge_group(struct rib_head *rh, struct route_nhop_data *rnd_orig,
 
 	if (nhg_priv == NULL)
 		return (error);
+	bzero(rnd_new, sizeof(*rnd_new));
 	rnd_new->rnd_nhgrp = nhg_priv->nhg;
-	rnd_new->rnd_weight = 0;
 
 	return (0);
 }

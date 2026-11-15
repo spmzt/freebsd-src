@@ -337,7 +337,8 @@ struct rt_msghdr {
 
 struct rtentry;
 struct nhop_object;
-typedef int rib_filter_f_t(const struct rtentry *, const struct nhop_object *,
+struct weightened_nhop;
+typedef int rib_filter_f_t(const struct rtentry *, const struct weightened_nhop *,
     void *);
 
 struct rt_addrinfo {

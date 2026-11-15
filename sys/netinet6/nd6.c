@@ -1598,10 +1598,11 @@ nd6_free(struct llentry **lnp, int gc)
 }
 
 static int
-nd6_isdynrte(const struct rtentry *rt, const struct nhop_object *nh, void *xap)
+nd6_isdynrte(const struct rtentry *rt, const struct weightened_nhop *wn,
+    void *xap)
 {
 
-	if (nh->nh_flags & NHF_REDIRECT)
+	if (wn->nh->nh_flags & NHF_REDIRECT)
 		return (1);
 
 	return (0);

@@ -202,6 +202,16 @@ get_info_weight(const struct rt_addrinfo *info, uint32_t default_weight)
 	return (weight);
 }
 
+static uint32_t
+get_info_metric(const struct rt_addrinfo *info)
+{
+
+	if (info->rti_mflags & RTV_METRIC)
+		return (info->rti_rmx->rmx_metric);
+
+	return (RT_WILDCARD_METRIC);
+}
+
 /*
  * File-local concept for distingushing between the normal and
  * RTF_PINNED routes tha can override the "normal" one.
@@ -274,11 +284,12 @@ match_nhop_gw(const struct nhop_object *nh, const struct sockaddr *gw)
  * Can be used as rib_filter_f callback.
  */
 int
-rib_match_gw(const struct rtentry *rt, const struct nhop_object *nh, void *gw_sa)
+rib_match_gw(const struct rtentry *rt, const struct weightened_nhop *wn,
+    void *gw_sa)
 {
 	const struct sockaddr *gw = (const struct sockaddr *)gw_sa;
 
-	return (match_nhop_gw(nh, gw));
+	return (match_nhop_gw(wn->nh, gw));
 }
 
 struct gw_filter_data {
@@ -290,18 +301,19 @@ struct gw_filter_data {
  * Matches first occurence of the gateway provided in @gwd
  */
 static int
-match_gw_one(const struct rtentry *rt, const struct nhop_object *nh, void *_data)
+match_gw_one(const struct rtentry *rt, const struct weightened_nhop *wn,
+    void *_data)
 {
 	struct gw_filter_data *gwd = (struct gw_filter_data *)_data;
 
 	/* Return only first match to make rtsock happy */
-	if (match_nhop_gw(nh, gwd->gw) && gwd->count++ == 0)
+	if (match_nhop_gw(wn->nh, gwd->gw) && gwd->count++ == 0)
 		return (1);
 	return (0);
 }
 
 /*
- * Checks if data in @info matches nexhop @nh.
+ * Checks if data in @info matches path @wn.
  *
  * Returns 0 on success,
  * ESRCH if not matched,
@@ -309,17 +321,17 @@ match_gw_one(const struct rtentry *rt, const struct nhop_object *nh, void *_data
  */
 int
 check_info_match_nhop(const struct rt_addrinfo *info, const struct rtentry *rt,
-    const struct nhop_object *nh)
+    const struct weightened_nhop *wn)
 {
 	const struct sockaddr *gw = info->rti_info[RTAX_GATEWAY];
 
 	if (info->rti_filter != NULL) {
-	    if (info->rti_filter(rt, nh, info->rti_filterdata) == 0)
+	    if (info->rti_filter(rt, wn, info->rti_filterdata) == 0)
 		    return (ENOENT);
 	    else
 		    return (0);
 	}
-	if ((gw != NULL) && !match_nhop_gw(nh, gw))
+	if ((gw != NULL) && !match_nhop_gw(wn->nh, gw))
 		return (ESRCH);
 
 	return (0);
@@ -339,13 +351,10 @@ lookup_prefix_bysa(struct rib_head *rnh, const struct sockaddr *dst,
 	RIB_LOCK_ASSERT(rnh);
 
 	rt = (struct rtentry *)rnh->rnh_lookup(dst, netmask, &rnh->head);
-	if (rt != NULL) {
-		rnd->rnd_nhop = rt->rt_nhop;
-		rnd->rnd_weight = rt->rt_weight;
-	} else {
-		rnd->rnd_nhop = NULL;
-		rnd->rnd_weight = 0;
-	}
+	if (rt != NULL)
+		rt_get_rnd(rt, rnd);
+	else
+		bzero(rnd, sizeof(*rnd));
 
 	return (rt);
 }
@@ -645,7 +654,8 @@ rib_copy_route(struct rtentry *rt, const struct route_nhop_data *rnd_src,
 
 	struct route_nhop_data rnd = {
 		.rnd_nhop = nh,
-		.rnd_weight = rnd_src->rnd_weight
+		.rnd_weight = rnd_src->rnd_weight,
+		.rnd_metric = rnd_src->rnd_metric
 	};
 	int op_flags = RTM_F_CREATE | (NH_IS_PINNED(nh) ? RTM_F_FORCE : 0);
 	error = add_route_flags(rh_dst, rt_new, &rnd, op_flags, rc);
@@ -749,6 +759,7 @@ add_route_byinfo(struct rib_head *rnh, struct rt_addrinfo *info,
 
 	rnd_add.rnd_nhop = nh;
 	rnd_add.rnd_weight = get_info_weight(info, RT_DEFAULT_WEIGHT);
+	rnd_add.rnd_metric = get_info_metric(info);
 
 	int op_flags = RTM_F_CREATE;
 
@@ -774,6 +785,9 @@ add_route_flags(struct rib_head *rnh, struct rtentry *rt, struct route_nhop_data
 	MPASS(rt != NULL);
 
 	nh = rnd_add->rnd_nhop;
+	/* A path without a metric gets the default one */
+	if (!NH_IS_NHGRP(nh) && rnd_add->rnd_metric == RT_WILDCARD_METRIC)
+		rnd_add->rnd_metric = RT_DEFAULT_METRIC;
 
 	RIB_WLOCK(rnh);
 
@@ -980,10 +994,10 @@ rt_delete_conditional(struct rib_head *rnh, struct rtentry *rt,
     int prio, rib_filter_f_t *cb, void *cbdata, struct rib_cmd_info *rc)
 {
 	struct nhop_object *nh = rt->rt_nhop;
+	struct route_nhop_data rnd;
 
 	if (NH_IS_NHGRP(nh)) {
 		struct nhgrp_object *nhg = (struct nhgrp_object *)nh;
-		struct route_nhop_data rnd;
 		int error;
 
 		if (cb == NULL)
@@ -999,7 +1013,8 @@ rt_delete_conditional(struct rib_head *rnh, struct rtentry *rt,
 		}
 		return (error);
 	}
-	if (cb != NULL && !cb(rt, nh, cbdata))
+	rt_get_rnd(rt, &rnd);
+	if (cb != NULL && !cb(rt, &rnd.rnd_path, cbdata))
 		return (ESRCH);
 
 	if (prio < nhop_get_prio(nh))
@@ -1056,8 +1071,7 @@ rib_change_route(uint32_t fibnum, struct rt_addrinfo *info,
 		return (ESRCH);
 	}
 
-	rnd_orig.rnd_nhop = rt->rt_nhop;
-	rnd_orig.rnd_weight = rt->rt_weight;
+	rt_get_rnd(rt, &rnd_orig);
 
 	RIB_RUNLOCK(rnh);
 
@@ -1114,7 +1128,7 @@ change_mpath_route(struct rib_head *rnh, struct rtentry *rt,
 
 	wn = nhgrp_get_nhops(rnd_orig->rnd_nhgrp, &num_nhops);
 	for (int i = 0; i < num_nhops; i++) {
-		if (check_info_match_nhop(info, NULL, wn[i].nh) == 0) {
+		if (check_info_match_nhop(info, NULL, &wn[i]) == 0) {
 			nh_orig = wn[i].nh;
 			found_idx = i;
 			break;
@@ -1168,6 +1182,7 @@ change_route_byinfo(struct rib_head *rnh, struct rtentry *rt,
 		return (change_mpath_route(rnh, rt, info, rnd_orig, rc));
 
 	rnd_new.rnd_weight = get_info_weight(info, rnd_orig->rnd_weight);
+	rnd_new.rnd_metric = rnd_orig->rnd_metric;
 	error = change_nhop(rnh, info, nh_orig, &rnd_new.rnd_nhop);
 	if (error != 0)
 		return (error);
@@ -1210,6 +1225,7 @@ add_route(struct rib_head *rnh, struct rtentry *rt,
 
 	rt->rt_nhop = rnd->rnd_nhop;
 	rt->rt_weight = rnd->rnd_weight;
+	rt->rt_metric = rnd->rnd_metric;
 	rn = rnh->rnh_addaddr(rt_key(rt), rt_mask_const(rt), &rnh->head, rt->rt_nodes);
 
 	if (rn != NULL) {
@@ -1220,9 +1236,8 @@ add_route(struct rib_head *rnh, struct rtentry *rt,
 
 		rc->rc_cmd = RTM_ADD;
 		rc->rc_rt = rt;
-		rc->rc_nh_old = NULL;
-		rc->rc_nh_new = rnd->rnd_nhop;
-		rc->rc_nh_weight = rnd->rnd_weight;
+		bzero(&rc->rc_old, sizeof(rc->rc_old));
+		rc->rc_new = *rnd;
 
 		rib_notify(rnh, RIB_NOTIFY_IMMEDIATE, rc);
 		return (0);
@@ -1254,9 +1269,8 @@ delete_route(struct rib_head *rnh, struct rtentry *rt, struct rib_cmd_info *rc)
 
 	rc->rc_cmd = RTM_DELETE;
 	rc->rc_rt = rt;
-	rc->rc_nh_old = rt->rt_nhop;
-	rc->rc_nh_new = NULL;
-	rc->rc_nh_weight = rt->rt_weight;
+	rt_get_rnd(rt, &rc->rc_old);
+	bzero(&rc->rc_new, sizeof(rc->rc_new));
 
 	rib_notify(rnh, RIB_NOTIFY_IMMEDIATE, rc);
 
@@ -1271,27 +1285,27 @@ int
 change_route(struct rib_head *rnh, struct rtentry *rt,
     struct route_nhop_data *rnd, struct rib_cmd_info *rc)
 {
-	struct nhop_object *nh_orig;
+	struct route_nhop_data rnd_orig;
 
 	RIB_WLOCK_ASSERT(rnh);
 
-	nh_orig = rt->rt_nhop;
+	rt_get_rnd(rt, &rnd_orig);
 
 	if (rnd->rnd_nhop == NULL)
 		return (delete_route(rnh, rt, rc));
 
-	/* Changing nexthop & weight to a new one */
+	/* Changing nexthop, weight & metric to the new ones */
 	rt->rt_nhop = rnd->rnd_nhop;
 	rt->rt_weight = rnd->rnd_weight;
+	rt->rt_metric = rnd->rnd_metric;
 	update_tmproutes_mpath(rnh, rt, rnd);
 
 	/* Finalize notification */
 	rib_bump_gen(rnh);
 	rc->rc_cmd = RTM_CHANGE;
 	rc->rc_rt = rt;
-	rc->rc_nh_old = nh_orig;
-	rc->rc_nh_new = rnd->rnd_nhop;
-	rc->rc_nh_weight = rnd->rnd_weight;
+	rc->rc_old = rnd_orig;
+	rc->rc_new = *rnd;
 
 	rib_notify(rnh, RIB_NOTIFY_IMMEDIATE, rc);
 
@@ -1331,8 +1345,7 @@ change_route_conditional(struct rib_head *rnh, struct rtentry *rt,
 			 * Prefix does not exist, which was not our assumption.
 			 * Update @rnd_orig with the new data and return
 			 */
-			rnd_orig->rnd_nhop = NULL;
-			rnd_orig->rnd_weight = 0;
+			bzero(rnd_orig, sizeof(*rnd_orig));
 			error = EAGAIN;
 		}
 	} else {
@@ -1345,8 +1358,7 @@ change_route_conditional(struct rib_head *rnh, struct rtentry *rt,
 			error = change_route(rnh, rt_new, rnd_new, rc);
 		} else {
 			/* Update and retry */
-			rnd_orig->rnd_nhop = rt_new->rt_nhop;
-			rnd_orig->rnd_weight = rt_new->rt_weight;
+			rt_get_rnd(rt_new, rnd_orig);
 			error = EAGAIN;
 		}
 	}
@@ -1488,7 +1500,7 @@ rib_walk_del(u_int fibnum, int family, rib_filter_f_t *filter_f, void *filter_ar
 		nh = rt->rt_nhop;
 
 		di.rc.rc_rt = rt;
-		di.rc.rc_nh_old = nh;
+		rt_get_rnd(rt, &di.rc.rc_old);
 		rib_notify(rnh, RIB_NOTIFY_DELAYED, &di.rc);
 
 		if (report) {

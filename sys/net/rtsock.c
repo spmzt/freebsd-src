@@ -200,12 +200,12 @@ static int	rt_xaddrs(caddr_t cp, caddr_t cplim,
 			struct rt_addrinfo *rtinfo);
 static int	cleanup_xaddrs(struct rt_addrinfo *info, struct linear_buffer *lb);
 static int	sysctl_dumpentry(struct rtentry *rt, void *vw);
-static int	sysctl_dumpnhop(struct rtentry *rt, struct nhop_object *nh,
-			uint32_t weight, struct walkarg *w);
+static int	sysctl_dumpnhop(struct rtentry *rt,
+			const struct weightened_nhop *wn, struct walkarg *w);
 static int	sysctl_iflist(int af, struct walkarg *w);
 static int	sysctl_ifmalist(int af, struct walkarg *w);
-static void	rt_getmetrics(const struct rtentry *rt,
-			const struct nhop_object *nh, struct rt_metrics *out);
+static void	rt_getmetrics(const struct weightened_nhop *wn,
+			struct rt_metrics *out);
 static void	rt_dispatch(struct mbuf *, sa_family_t);
 static void	rt_ifannouncemsg(struct ifnet *, int, const char *);
 static int	handle_rtm_get(struct rt_addrinfo *info, u_int fibnum,
@@ -746,20 +746,22 @@ fill_addrinfo(struct rt_msghdr *rtm, int len, struct linear_buffer *lb, u_int fi
 }
 
 static struct nhop_object *
-select_nhop(struct nhop_object *nh, const struct sockaddr *gw)
+select_nhop(const struct rtentry *rt, const struct sockaddr *gw,
+    struct route_nhop_data *rnd)
 {
 	const struct weightened_nhop *wn;
 	uint32_t num_nhops;
 
-	if (!NH_IS_NHGRP(nh))
-		return (nh);
+	rt_get_rnd(rt, rnd);
+	if (!NH_IS_NHGRP(rnd->rnd_nhop))
+		return (rnd->rnd_nhop);
 
-	wn = nhgrp_get_nhops((struct nhgrp_object *)nh, &num_nhops);
-	if (gw == NULL)
-		return (wn[0].nh);
+	wn = nhgrp_get_nhops(rnd->rnd_nhgrp, &num_nhops);
 	for (int i = 0; i < num_nhops; i++) {
-		if (match_nhop_gw(wn[i].nh, gw))
+		if (gw == NULL || match_nhop_gw(wn[i].nh, gw)) {
+			rnd->rnd_path = wn[i];
 			return (wn[i].nh);
+		}
 	}
 
 	return (NULL);
@@ -780,6 +782,9 @@ handle_rtm_get(struct rt_addrinfo *info, u_int fibnum,
 	struct rib_head *rnh;
 	struct nhop_object *nh;
 	sa_family_t saf;
+
+	bzero(rc, sizeof(struct rib_cmd_info));
+	rc->rc_cmd = RTM_GET;
 
 	saf = info->rti_info[RTAX_DST]->sa_family;
 
@@ -814,7 +819,7 @@ handle_rtm_get(struct rt_addrinfo *info, u_int fibnum,
 		return (ESRCH);
 	}
 
-	nh = select_nhop(rt_get_raw_nhop(rc->rc_rt), info->rti_info[RTAX_GATEWAY]);
+	nh = select_nhop(rc->rc_rt, info->rti_info[RTAX_GATEWAY], &rc->rc_new);
 	if (nh == NULL) {
 		RIB_RUNLOCK(rnh);
 		return (ESRCH);
@@ -852,14 +857,13 @@ handle_rtm_get(struct rt_addrinfo *info, u_int fibnum,
 			RIB_RUNLOCK(rnh);
 			return (ESRCH);
 		}
-		nh = select_nhop(rt_get_raw_nhop(rc->rc_rt), info->rti_info[RTAX_GATEWAY]);
+		nh = select_nhop(rc->rc_rt, info->rti_info[RTAX_GATEWAY],
+		    &rc->rc_new);
 		if (nh == NULL) {
 			RIB_RUNLOCK(rnh);
 			return (ESRCH);
 		}
 	}
-	rc->rc_nh_new = nh;
-	rc->rc_nh_weight = rc->rc_rt->rt_weight;
 	RIB_RUNLOCK(rnh);
 
 	return (0);
@@ -1022,8 +1026,8 @@ update_rtm_from_rc(struct rt_addrinfo *info, struct rt_msghdr **prtm,
 	if (rtm->rtm_flags & RTF_GWFLAG_COMPAT)
 		rtm->rtm_flags = RTF_GATEWAY | 
 			(rtm->rtm_flags & ~RTF_GWFLAG_COMPAT);
-	rt_getmetrics(rc->rc_rt, nh, &rtm->rtm_rmx);
-	rtm->rtm_rmx.rmx_weight = rc->rc_nh_weight;
+	rt_getmetrics(rc->rc_cmd == RTM_DELETE ? &rc->rc_old.rnd_path :
+	    &rc->rc_new.rnd_path, &rtm->rtm_rmx);
 
 	return (0);
 }
@@ -1320,14 +1324,14 @@ send_rtm_reply(struct socket *so, struct rt_msghdr *rtm, struct mbuf *m,
 }
 
 static void
-rt_getmetrics(const struct rtentry *rt, const struct nhop_object *nh,
-    struct rt_metrics *out)
+rt_getmetrics(const struct weightened_nhop *wn, struct rt_metrics *out)
 {
+	const struct nhop_object *nh = wn->nh;
 
 	bzero(out, sizeof(*out));
 	out->rmx_mtu = nh->nh_mtu;
-	out->rmx_weight = rt->rt_weight;
-	out->rmx_metric = nhop_get_metric(nh);
+	out->rmx_weight = wn->weight;
+	out->rmx_metric = wn->metric;
 	out->rmx_nhidx = nhop_get_idx(nh);
 	/* Kernel -> userland timebase conversion. */
 	out->rmx_expire = nhop_get_expire(nh) ?
@@ -2244,6 +2248,7 @@ static int
 sysctl_dumpentry(struct rtentry *rt, void *vw)
 {
 	const struct weightened_nhop *wn;
+	struct route_nhop_data rnd;
 	struct walkarg *w = vw;
 	struct nhop_object *nh;
 	int error;
@@ -2259,21 +2264,24 @@ sysctl_dumpentry(struct rtentry *rt, void *vw)
 	if (NH_IS_NHGRP(nh)) {
 		wn = nhgrp_get_nhops((struct nhgrp_object *)nh, &num_nhops);
 		for (int i = 0; i < num_nhops; i++) {
-			error = sysctl_dumpnhop(rt, wn[i].nh, wn[i].weight, w);
+			error = sysctl_dumpnhop(rt, &wn[i], w);
 			if (error != 0)
 				return (error);
 		}
-	} else
-		sysctl_dumpnhop(rt, nh, rt->rt_weight, w);
+	} else {
+		rt_get_rnd(rt, &rnd);
+		sysctl_dumpnhop(rt, &rnd.rnd_path, w);
+	}
 
 	return (0);
 }
 
 
 static int
-sysctl_dumpnhop(struct rtentry *rt, struct nhop_object *nh, uint32_t weight,
+sysctl_dumpnhop(struct rtentry *rt, const struct weightened_nhop *wn,
     struct walkarg *w)
 {
+	struct nhop_object *nh = wn->nh;
 	struct rt_addrinfo info;
 	int error = 0, size;
 	uint32_t rtflags;
@@ -2311,8 +2319,7 @@ sysctl_dumpnhop(struct rtentry *rt, struct nhop_object *nh, uint32_t weight,
 		if (rtm->rtm_flags & RTF_GWFLAG_COMPAT)
 			rtm->rtm_flags = RTF_GATEWAY | 
 				(rtm->rtm_flags & ~RTF_GWFLAG_COMPAT);
-		rt_getmetrics(rt, nh, &rtm->rtm_rmx);
-		rtm->rtm_rmx.rmx_weight = weight;
+		rt_getmetrics(wn, &rtm->rtm_rmx);
 		rtm->rtm_index = nh->nh_ifp->if_index;
 		rtm->rtm_addrs = info.rti_addrs;
 		error = SYSCTL_OUT(w->w_req, rtm, size);

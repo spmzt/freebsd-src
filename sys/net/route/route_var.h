@@ -176,7 +176,8 @@ struct rtentry {
 	};
 
 	int		rte_flags;	/* up/down?, host/net */
-	u_long		rt_weight;	/* absolute weight */ 
+	uint32_t	rt_weight;	/* absolute weight */
+	uint32_t	rt_metric;	/* path metric */
 	struct rtentry	*rt_chain;	/* pointer to next rtentry to delete */
 	struct epoch_context	rt_epoch_ctx;	/* net epoch tracker */
 };
@@ -223,7 +224,7 @@ int rib_copy_route(struct rtentry *rt, const struct route_nhop_data *rnd_src,
 bool nhop_can_multipath(const struct nhop_object *nh);
 bool match_nhop_gw(const struct nhop_object *nh, const struct sockaddr *gw);
 int check_info_match_nhop(const struct rt_addrinfo *info,
-    const struct rtentry *rt, const struct nhop_object *nh);
+    const struct rtentry *rt, const struct weightened_nhop *wn);
 bool rib_can_4o6_nhop(void);
 
 /* route_rtentry.c */

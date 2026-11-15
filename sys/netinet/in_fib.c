@@ -302,6 +302,7 @@ fib4_lookup_rt(uint32_t fibnum, struct in_addr dst, uint32_t scopeid,
 		rt = (struct rtentry *)rn;
 		rnd->rnd_nhop = rt->rt_nhop;
 		rnd->rnd_weight = rt->rt_weight;
+		rnd->rnd_metric = rt->rt_metric;
 	}
 	if (!(flags & NHR_UNLOCKED))
 		RIB_RUNLOCK(rh);

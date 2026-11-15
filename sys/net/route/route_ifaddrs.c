@@ -211,6 +211,7 @@ pick_kernel_route(struct rtentry *rt, void *arg)
 		struct route_nhop_data rnd = {
 			.rnd_nhop = nh,
 			.rnd_weight = rt->rt_weight,
+			.rnd_metric = rt->rt_metric,
 		};
 		rib_copy_route(rt, &rnd, rh_dst, &rc);
 	}

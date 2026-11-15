@@ -889,10 +889,11 @@ in_gifaddr_ioctl(u_long cmd, caddr_t data, struct ifnet *ifp, struct ucred *cred
 }
 
 static int
-in_match_ifaddr(const struct rtentry *rt, const struct nhop_object *nh, void *arg)
+in_match_ifaddr(const struct rtentry *rt, const struct weightened_nhop *wn,
+    void *arg)
 {
 
-	if (nh->nh_ifa == (struct ifaddr *)arg)
+	if (wn->nh->nh_ifa == (struct ifaddr *)arg)
 		return (1);
 
 	return (0);

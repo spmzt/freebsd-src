@@ -312,6 +312,7 @@ clone_unhop(const struct user_nhop *unhop, uint32_t fibnum, int family, int nh_f
 		if (error != 0)
 			break;
 		wn_new[i].weight = wn[i].weight;
+		wn_new[i].metric = wn[i].metric;
 	}
 
 	if (error == 0) {
